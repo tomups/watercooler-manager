@@ -12,8 +12,13 @@ class PumpVoltage(IntEnum):
     V7 = 0x02
     V8 = 0x03
 
-class DeviceCommands:
+class Commands:
     RESET = 0x19
     FAN = 0x1b
     PUMP = 0x1c
     RGB = 0x1e 
+
+class NordicUART:
+    SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
+    CHAR_TX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'
+    CHAR_RX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e' 

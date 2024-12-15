@@ -8,7 +8,7 @@ from .tray import SystemTrayIcon
 from .enums import PumpVoltage, RGBState
 import pystray
 
-class WaterCoolerApp:
+class WaterCoolerManager:
     def __init__(self):
         self.settings = Settings()
         self.device = WaterCoolingDevice()

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-from water_cooler import WaterCoolerApp
+from watercooler_manager import WaterCoolerManager
 
 def main():
-    app = WaterCoolerApp()
+    app = WaterCoolerManager()
     app.run()
 
 if __name__ == "__main__":
