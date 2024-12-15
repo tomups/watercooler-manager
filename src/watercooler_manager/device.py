@@ -39,19 +39,19 @@ class WaterCoolingDevice:
         return None
 
     async def get_device_list(self) -> List[DeviceInfo]:
-        devices = await BleakScanner.discover()
+        devices = await BleakScanner.discover(return_adv=True)
         device_info_list = []
 
-        for device in devices:
+        for addr, (device, adv) in devices.items():            
             if not device.name:
                 continue
 
             model = await self.device_model_from_name(device.name)
-            if model:
+            if model:                
                 info = DeviceInfo()
                 info.uuid = device.address
                 info.name = device.name
-                info.rssi = device.rssi or 0
+                info.rssi = adv.rssi or 0
                 device_info_list.append(info)
 
         return device_info_list
