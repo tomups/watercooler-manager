@@ -23,16 +23,9 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
-    - name: Download UPX
-      run: |
-        Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip" -OutFile "upx.zip"
-        Expand-Archive -Path "upx.zip" -DestinationPath "."
-        mv upx-*-win64/upx.exe .
-        
     - name: Build executable
       run: |        
         pyinstaller --noconfirm --onefile --windowed --noconsole --icon "src/icons/connected.png" --add-data "src/icons;icons" --add-data "src/watercooler_manager;watercooler_manager" --name "WaterCoolerManager" src/main.py
-        .\upx.exe --best --lzma --force dist\WaterCoolerManager.exe
         
     - name: Create Release
       id: create_release
