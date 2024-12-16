@@ -109,8 +109,8 @@ class WaterCoolerManager:
                                checked=lambda _: not self.settings.fan_is_off and self.settings.current_fan_speed == 50),
                 pystray.MenuItem('75%', lambda: self._set_fan_speed(75),
                                checked=lambda _: not self.settings.fan_is_off and self.settings.current_fan_speed == 75),
-                pystray.MenuItem('100%', lambda: self._set_fan_speed(100),
-                               checked=lambda _: not self.settings.fan_is_off and self.settings.current_fan_speed == 100)
+                pystray.MenuItem('90%', lambda: self._set_fan_speed(90),
+                               checked=lambda _: not self.settings.fan_is_off and self.settings.current_fan_speed == 90)
             ))
         )
         return menu

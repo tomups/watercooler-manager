@@ -15,7 +15,7 @@ Should work with:
 
 - System tray interface with connection status indicator
 - Control pump voltage (7V, 8V, 11V)
-- Adjust fan speed (25%, 50%, 75%, 100%) 
+- Adjust fan speed (25%, 50%, 75%, 90%) 
 - RGB lighting controls:
   - On/Off toggle
   - Multiple modes: Static, Breathe, Rainbow, Breathe Rainbow
