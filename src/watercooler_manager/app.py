@@ -93,9 +93,7 @@ class WaterCoolerManager:
                 pystray.MenuItem('8V', lambda: self._set_pump_voltage(PumpVoltage.V8),
                                checked=lambda _: not self.settings.pump_is_off and self.settings.current_voltage == PumpVoltage.V8),
                 pystray.MenuItem('11V', lambda: self._set_pump_voltage(PumpVoltage.V11),
-                               checked=lambda _: not self.settings.pump_is_off and self.settings.current_voltage == PumpVoltage.V11),
-                pystray.MenuItem('12V', lambda: self._set_pump_voltage(PumpVoltage.V12),
-                               checked=lambda _: not self.settings.pump_is_off and self.settings.current_voltage == PumpVoltage.V12)
+                               checked=lambda _: not self.settings.pump_is_off and self.settings.current_voltage == PumpVoltage.V11)                
             ))
         )
         return menu

@@ -12,7 +12,7 @@ Should work with:
 ## Features
 
 - System tray interface with connection status indicator
-- Control pump voltage (7V, 8V, 11V, 12V)
+- Control pump voltage (7V, 8V, 11V)
 - Adjust fan speed (25%, 50%, 75%, 100%) 
 - RGB lighting controls:
   - On/Off toggle
