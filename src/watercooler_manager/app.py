@@ -1,7 +1,5 @@
 import asyncio
 import threading
-import sys
-from typing import Optional
 from .device import WaterCoolingDevice
 from .settings import Settings
 from .tray import SystemTrayIcon
@@ -9,7 +7,7 @@ from .enums import PumpVoltage, RGBState
 import pystray
 
 class WaterCoolerManager:
-    def __init__(self):
+    def __init__(self, version=None):
         self.settings = Settings()
         self.device = WaterCoolingDevice()
         self.loop = asyncio.new_event_loop()
@@ -22,7 +20,8 @@ class WaterCoolerManager:
             on_autostart_settings=self.handle_autostart_settings,
             on_autoconnect_settings=self.handle_autoconnect_settings,
             on_exit=self.exit_app,
-            settings=self.settings
+            settings=self.settings,
+            version=version if version is not None else "v1.0.0"
         )
 
     def run(self):
