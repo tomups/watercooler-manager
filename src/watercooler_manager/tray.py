@@ -6,15 +6,17 @@ import os
 class SystemTrayIcon:
     def __init__(self, on_connect: Callable, on_disconnect: Callable, 
                  on_pump_settings: Callable, on_fan_settings: Callable,
-                 on_rgb_settings: Callable, on_exit: Callable):
+                 on_rgb_settings: Callable, on_autostart_settings: Callable, on_exit: Callable, settings):
         self.icon = None
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect
         self.on_pump_settings = on_pump_settings
         self.on_fan_settings = on_fan_settings
         self.on_rgb_settings = on_rgb_settings
+        self.on_autostart_settings = on_autostart_settings
         self.on_exit = on_exit
         self.connected = False
+        self.settings = settings
 
     def create_icon_image(self, connected: bool = False):        
         icon_dir = os.path.join(os.path.dirname(__file__), "..", "icons")
@@ -31,6 +33,7 @@ class SystemTrayIcon:
             pystray.MenuItem('Fan', self.on_fan_settings()),
             pystray.MenuItem('RGB', self.on_rgb_settings()),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem('Start on boot', self.on_autostart_settings, checked=lambda _: self.settings.auto_start),
             pystray.MenuItem('Exit', self.on_exit)
         )
 

@@ -3,6 +3,9 @@ import json
 import platform
 from typing import Tuple
 from .enums import PumpVoltage, RGBState
+import winshell
+from os.path import join, basename, splitext
+from sys import executable
 
 class Settings:
     REGISTRY_KEY = r"Software\WaterCooler"
@@ -16,6 +19,7 @@ class Settings:
         self.rgb_state = RGBState.STATIC
         self.rgb_is_off = False
         self.rgb_color = (255, 0, 0)  # Default red
+        self.auto_start = False
         self.load()
 
     def load(self):
@@ -41,6 +45,7 @@ class Settings:
             self.rgb_state = RGBState(winreg.QueryValueEx(key, "rgb_state")[0])
             self.rgb_is_off = bool(winreg.QueryValueEx(key, "rgb_is_off")[0])
             self.rgb_color = tuple(winreg.QueryValueEx(key, "rgb_color")[0])
+            self.auto_start = bool(winreg.QueryValueEx(key, "auto_start")[0])
             winreg.CloseKey(key)
         except:
             pass
@@ -56,6 +61,7 @@ class Settings:
             winreg.SetValueEx(key, "rgb_state", 0, winreg.REG_DWORD, self.rgb_state)
             winreg.SetValueEx(key, "rgb_is_off", 0, winreg.REG_DWORD, int(self.rgb_is_off))
             winreg.SetValueEx(key, "rgb_color", 0, winreg.REG_BINARY, bytes(self.rgb_color))
+            winreg.SetValueEx(key, "auto_start", 0, winreg.REG_DWORD, int(self.auto_start))
             winreg.CloseKey(key)
         except:
             pass
@@ -71,6 +77,7 @@ class Settings:
                 self.rgb_state = RGBState(config['rgb_state'])
                 self.rgb_is_off = config['rgb_is_off']
                 self.rgb_color = tuple(config['rgb_color'])
+                self.auto_start = config['auto_start']
         except:
             pass
 
@@ -83,9 +90,29 @@ class Settings:
                 'fan_is_off': self.fan_is_off,
                 'rgb_state': self.rgb_state,
                 'rgb_is_off': self.rgb_is_off,
-                'rgb_color': self.rgb_color
+                'rgb_color': self.rgb_color,
+                'auto_start': self.auto_start
             }
             with open(self.CONFIG_FILE, 'w') as f:
                 json.dump(config, f)
         except:
             pass 
+
+    def set_autostart(self, autostart: bool):
+        self.auto_start = autostart
+        
+        if platform.system() == 'Windows':
+            startup_dir = winshell.startup()
+            shortcut_path = join(startup_dir, f"{splitext(basename(executable))[0]}.lnk")
+            
+            if autostart:
+                winshell.CreateShortcut(
+                    Path=shortcut_path,
+                    Target=executable,
+                    Icon=(executable, 0),
+                    Description="Watercooler Manager"
+                )
+            elif os.path.exists(shortcut_path):
+                os.remove(shortcut_path)
+        
+        self.save() 

@@ -19,7 +19,9 @@ class WaterCoolerManager:
             on_pump_settings=self.handle_pump_settings,
             on_fan_settings=self.handle_fan_settings,
             on_rgb_settings=self.handle_rgb_settings,
-            on_exit=self.exit_app
+            on_autostart_settings=self.handle_autostart_settings,
+            on_exit=self.exit_app,
+            settings=self.settings
         )
 
     def run(self):
@@ -141,6 +143,9 @@ class WaterCoolerManager:
             ))
         )
         return menu
+
+    def handle_autostart_settings(self):
+        self.settings.set_autostart(not self.settings.auto_start)
 
     def _toggle_pump(self):
         self.settings.pump_is_off = not self.settings.pump_is_off
