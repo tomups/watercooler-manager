@@ -5,3 +5,4 @@ pystray==0.19.5
 six==1.17.0
 winshell==0.6
 typing_extensions==4.12.2
+pywin32==310
