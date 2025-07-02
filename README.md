@@ -20,7 +20,8 @@ Should work with:
   - On/Off toggle
   - Multiple modes: Static, Breathe, Rainbow, Breathe Rainbow
   - Color presets: Red, Green, Blue, White
-- Settings persist between sessions
+- Auto-start on boot (Windows only)
+- Auto-connect to the water cooler on startup
 
 ## Usage
 

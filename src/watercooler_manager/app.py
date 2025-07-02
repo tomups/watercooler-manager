@@ -20,6 +20,7 @@ class WaterCoolerManager:
             on_fan_settings=self.handle_fan_settings,
             on_rgb_settings=self.handle_rgb_settings,
             on_autostart_settings=self.handle_autostart_settings,
+            on_autoconnect_settings=self.handle_autoconnect_settings,
             on_exit=self.exit_app,
             settings=self.settings
         )
@@ -35,17 +36,22 @@ class WaterCoolerManager:
 
         # Setup and run the system tray
         self.tray.setup()
-        self.tray.run()
 
         # Auto connect on startup
-        asyncio.run_coroutine_threadsafe(self.connect_and_run(), self.loop)
+        if self.settings.auto_connect:
+            asyncio.run_coroutine_threadsafe(self.connect_and_run(), self.loop)
+
+        self.tray.run()
 
     def exit_app(self):
+        future = asyncio.run_coroutine_threadsafe(self.device.disconnect(), self.loop)
+        try:
+            future.result(2)
+        except Exception:
+            pass
         self.loop.call_soon_threadsafe(self.loop.stop)
-        asyncio.run_coroutine_threadsafe(self.device.disconnect(), self.loop)
         self.settings.save()
         self.tray.stop()
-        sys.exit(0)
 
     def connect_menu(self):
         asyncio.run_coroutine_threadsafe(self.connect_and_run(), self.loop)
@@ -146,6 +152,10 @@ class WaterCoolerManager:
 
     def handle_autostart_settings(self):
         self.settings.set_autostart(not self.settings.auto_start)
+
+    def handle_autoconnect_settings(self):
+        self.settings.auto_connect = not self.settings.auto_connect
+        self.settings.save()
 
     def _toggle_pump(self):
         self.settings.pump_is_off = not self.settings.pump_is_off

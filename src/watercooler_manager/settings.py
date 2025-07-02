@@ -20,6 +20,7 @@ class Settings:
         self.rgb_is_off = False
         self.rgb_color = (255, 0, 0)  # Default red
         self.auto_start = False
+        self.auto_connect = False
         self.load()
 
     def load(self):
@@ -46,6 +47,7 @@ class Settings:
             self.rgb_is_off = bool(winreg.QueryValueEx(key, "rgb_is_off")[0])
             self.rgb_color = tuple(winreg.QueryValueEx(key, "rgb_color")[0])
             self.auto_start = bool(winreg.QueryValueEx(key, "auto_start")[0])
+            self.auto_connect = bool(winreg.QueryValueEx(key, "auto_connect")[0])
             winreg.CloseKey(key)
         except:
             pass
@@ -62,6 +64,7 @@ class Settings:
             winreg.SetValueEx(key, "rgb_is_off", 0, winreg.REG_DWORD, int(self.rgb_is_off))
             winreg.SetValueEx(key, "rgb_color", 0, winreg.REG_BINARY, bytes(self.rgb_color))
             winreg.SetValueEx(key, "auto_start", 0, winreg.REG_DWORD, int(self.auto_start))
+            winreg.SetValueEx(key, "auto_connect", 0, winreg.REG_DWORD, int(self.auto_connect))
             winreg.CloseKey(key)
         except:
             pass
@@ -78,6 +81,7 @@ class Settings:
                 self.rgb_is_off = config['rgb_is_off']
                 self.rgb_color = tuple(config['rgb_color'])
                 self.auto_start = config['auto_start']
+                self.auto_connect = config['auto_connect']
         except:
             pass
 
@@ -91,7 +95,8 @@ class Settings:
                 'rgb_state': self.rgb_state,
                 'rgb_is_off': self.rgb_is_off,
                 'rgb_color': self.rgb_color,
-                'auto_start': self.auto_start
+                'auto_start': self.auto_start,
+                'auto_connect': self.auto_connect
             }
             with open(self.CONFIG_FILE, 'w') as f:
                 json.dump(config, f)
