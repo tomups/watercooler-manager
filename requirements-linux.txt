@@ -1,0 +1,23 @@
+# Linux-specific dependencies for system tray support
+# These are in addition to the base requirements.txt
+
+# PyGObject provides Python bindings for GTK and GLib
+# Required for pystray to work on Linux with GTK backend
+PyGObject>=3.42.0
+
+# Cairo bindings for Python
+# Required for rendering operations
+pycairo>=1.20.0
+
+# Known Issue:
+# You may see: "libayatana-appindicator-WARNING: libayatana-appindicator is deprecated"
+# This is a harmless warning from pystray's use of the older AppIndicator API.
+# The application works normally. This will be fixed when pystray updates to the newer API.
+
+# Note: System packages are also required:
+# For Ubuntu/Debian:
+#   sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-appindicator3-0.1
+# For Fedora:
+#   sudo dnf install python3-gobject gtk3 libappindicator-gtk3
+# For Arch:
+#   sudo pacman -S python-gobject gtk3 libappindicator-gtk3

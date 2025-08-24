@@ -3,9 +3,15 @@ import json
 import platform
 from typing import Tuple
 from .enums import PumpVoltage, RGBState
-import winshell
 from os.path import join, basename, splitext
 from sys import executable
+
+# Windows-specific imports
+if platform.system() == 'Windows':
+    try:
+        import winshell
+    except ImportError:
+        winshell = None
 
 class Settings:
     REGISTRY_KEY = r"Software\WaterCooler"
@@ -106,7 +112,7 @@ class Settings:
     def set_autostart(self, autostart: bool):
         self.auto_start = autostart
         
-        if platform.system() == 'Windows':
+        if platform.system() == 'Windows' and 'winshell' in globals() and winshell:
             startup_dir = winshell.startup()
             shortcut_path = join(startup_dir, f"{splitext(basename(executable))[0]}.lnk")
             

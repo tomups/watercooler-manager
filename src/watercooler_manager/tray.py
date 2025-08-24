@@ -6,6 +6,10 @@ from PIL import Image
 from typing import Callable
 import os
 import webbrowser
+import tempfile
+import platform
+import time
+import threading
 
 class SystemTrayIcon:
     def __init__(self, on_connect: Callable, on_disconnect: Callable, 
@@ -27,8 +31,14 @@ class SystemTrayIcon:
     def create_icon_image(self, connected: bool = False):        
         icon_dir = os.path.join(os.path.dirname(__file__), "..", "icons")
         if connected:
-            return Image.open(os.path.join(icon_dir, "connected.png"))
-        return Image.open(os.path.join(icon_dir, "disconnected.png"))
+            img = Image.open(os.path.join(icon_dir, "connected.png"))
+        else:
+            img = Image.open(os.path.join(icon_dir, "disconnected.png"))
+        
+        # Resize icon to 64x64 for better system tray compatibility
+        # KDE Plasma and most Linux DEs work better with smaller icons
+        img = img.resize((64, 64), Image.Resampling.LANCZOS)
+        return img
 
     def create_menu(self):        
         def open_releases(icon, item):
@@ -54,21 +64,78 @@ class SystemTrayIcon:
 
     def setup(self):
         image = self.create_icon_image(connected=False)
-        self.icon = pystray.Icon("WaterCooler", image, "Water Cooler Manager", self.create_menu())
+        
+        # For KDE Plasma on Linux, we need to work around pystray's icon path issue
+        if platform.system() == 'Linux':
+            # Save icon to a temporary file that persists
+            self.icon_path = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            image.save(self.icon_path.name, 'PNG')
+            self.icon_path.close()
+            
+            # Create icon with the file path
+            self.icon = pystray.Icon("WaterCooler", image, "Water Cooler Manager", self.create_menu())
+            
+            # Force the icon path to be set for AppIndicator
+            if hasattr(self.icon, '_update_icon'):
+                # Ensure the icon file is created and set
+                def force_icon_update():
+                    time.sleep(0.5)  # Small delay to ensure icon is ready
+                    try:
+                        # Try to force update the icon path
+                        if hasattr(self.icon, '_icon_path'):
+                            self.icon._icon_path = self.icon_path.name
+                        if hasattr(self.icon, '_appindicator'):
+                            self.icon._appindicator.set_icon(self.icon_path.name)
+                    except:
+                        pass
+                
+                threading.Thread(target=force_icon_update, daemon=True).start()
+        else:
+            # Standard setup for other platforms
+            self.icon = pystray.Icon("WaterCooler", image, "Water Cooler Manager", self.create_menu())
 
     def run(self):
         if self.icon:
+            # On Linux with KDE, ensure icon is visible
+            if platform.system() == 'Linux' and hasattr(self.icon, '_appindicator'):
+                try:
+                    # Ensure the indicator is active
+                    import gi
+                    gi.require_version('AyatanaAppIndicator3', '0.1')
+                    from gi.repository import AyatanaAppIndicator3 as AppIndicator
+                    
+                    # Set the icon to active status
+                    self.icon._appindicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+                except:
+                    pass
+            
             self.icon.run()
 
     def stop(self):
         if self.icon:
             self.icon.stop()
+            # Clean up temporary icon file on Linux
+            if platform.system() == 'Linux' and hasattr(self, 'icon_path'):
+                try:
+                    os.unlink(self.icon_path.name)
+                except:
+                    pass
 
     def update_connection_status(self, connected: bool):
         if self.icon:
             self.connected = connected
-            self.icon.icon = self.create_icon_image(connected=connected)
+            new_image = self.create_icon_image(connected=connected)
+            self.icon.icon = new_image
             self.icon.menu = self.create_menu()
+            
+            # On Linux, also update the icon file
+            if platform.system() == 'Linux' and hasattr(self, 'icon_path'):
+                try:
+                    new_image.save(self.icon_path.name, 'PNG')
+                    if hasattr(self.icon, '_appindicator'):
+                        self.icon._appindicator.set_icon(self.icon_path.name)
+                except:
+                    pass
 
     def show_notification(self, message: str, title: str = "WaterCooler"):
         if self.icon:

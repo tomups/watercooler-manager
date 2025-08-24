@@ -1,0 +1,54 @@
+name: Build Linux Executable
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y \
+          python3-gi \
+          python3-gi-cairo \
+          gir1.2-gtk-3.0 \
+          gir1.2-appindicator3-0.1 \
+          libgtk-3-dev \
+          libcairo2-dev \
+          libgirepository1.0-dev \
+          pkg-config
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-linux.txt
+        pip install pyinstaller
+        
+    - name: Build executable
+      run: |        
+        pyinstaller --noconfirm --onefile --windowed --noconsole --icon "src/icons/connected.png" --add-data "src/icons:icons" --add-data "src/watercooler_manager:watercooler_manager" --name "WaterCoolerManager" src/main.py
+        
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/WaterCoolerManager          
+        name: Release ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
