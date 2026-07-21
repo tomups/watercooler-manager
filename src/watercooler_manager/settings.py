@@ -3,7 +3,8 @@ import json
 import platform
 from typing import Tuple
 from .enums import PumpVoltage, RGBState
-import winshell
+if platform.system() == "Windows":
+    import winshell
 from os.path import join, basename, splitext
 from sys import executable
 
