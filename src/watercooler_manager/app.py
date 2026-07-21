@@ -14,6 +14,7 @@ class WaterCoolerManager:
         self.tray = SystemTrayIcon(
             on_connect=self.connect_menu,
             on_disconnect=self.disconnect_menu,
+            on_mode_settings=self.handle_on_mode_settings,
             on_pump_settings=self.handle_pump_settings,
             on_fan_settings=self.handle_fan_settings,
             on_rgb_settings=self.handle_rgb_settings,
@@ -89,6 +90,79 @@ class WaterCoolerManager:
         await self.device.write_fan_mode(self.settings.current_fan_speed)
         if not self.settings.rgb_is_off:
             await self.device.write_rgb(*self.settings.rgb_color, self.settings.rgb_state)
+
+
+    def handle_on_mode_settings(self):
+        def set_low():
+            self._set_pump_voltage(PumpVoltage.V7)
+            self._set_fan_speed(25)
+            self._set_rgb_color(0, 255, 0)
+
+        def set_med():
+            self._set_pump_voltage(PumpVoltage.V8)
+            self._set_fan_speed(50)
+            self._set_rgb_color(0, 0, 255)
+
+        def set_high():
+            self._set_pump_voltage(PumpVoltage.V11)
+            self._set_fan_speed(90)
+            self._set_rgb_color(255, 0, 0)
+
+        def set_off():
+            # ensure we turn things off (don't just blindly toggle)
+            if not self.settings.pump_is_off:
+                self._toggle_pump()
+            if not self.settings.fan_is_off:
+                self._toggle_fan()
+            if not self.settings.rgb_is_off:
+                self._toggle_rgb()
+
+        menu = pystray.Menu(
+            pystray.MenuItem(
+                'Turn on Low Mode',
+                set_low,
+                checked=lambda _: (
+                    not self.settings.pump_is_off
+                    and self.settings.current_voltage == PumpVoltage.V7
+                    and not self.settings.fan_is_off
+                    and self.settings.current_fan_speed == 25
+                    and not self.settings.rgb_is_off
+                    and self.settings.rgb_color == (0, 255, 0)
+                )
+            ),
+            pystray.MenuItem(
+                'Turn on Med Mode',
+                set_med,
+                checked=lambda _: (
+                    not self.settings.pump_is_off
+                    and self.settings.current_voltage == PumpVoltage.V8
+                    and not self.settings.fan_is_off
+                    and self.settings.current_fan_speed == 50
+                    and not self.settings.rgb_is_off
+                    and self.settings.rgb_color == (0, 0, 255)
+                )
+            ),
+            pystray.MenuItem(
+                'Turn on High Mode',
+                set_high,
+                checked=lambda _: (
+                    not self.settings.pump_is_off
+                    and self.settings.current_voltage == PumpVoltage.V11
+                    and not self.settings.fan_is_off
+                    and self.settings.current_fan_speed == 90
+                    and not self.settings.rgb_is_off
+                    and self.settings.rgb_color == (255, 0, 0)
+                )
+            ),
+            pystray.MenuItem(
+                'Turn off Mode',
+                set_off,
+                checked=lambda _: (
+                    self.settings.pump_is_off and self.settings.fan_is_off and self.settings.rgb_is_off
+                )
+            )
+        )
+        return menu
 
     def handle_pump_settings(self):
         menu = pystray.Menu(

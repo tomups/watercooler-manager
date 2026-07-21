@@ -8,12 +8,13 @@ import os
 import webbrowser
 
 class SystemTrayIcon:
-    def __init__(self, on_connect: Callable, on_disconnect: Callable, 
+    def __init__(self, on_connect: Callable, on_disconnect: Callable, on_mode_settings: Callable, 
                  on_pump_settings: Callable, on_fan_settings: Callable,
                  on_rgb_settings: Callable, on_autostart_settings: Callable, on_autoconnect_settings: Callable, on_exit: Callable, settings, version: str = APP_VERSION):
         self.icon = None
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect
+        self.on_mode_settings= on_mode_settings
         self.on_pump_settings = on_pump_settings
         self.on_fan_settings = on_fan_settings
         self.on_rgb_settings = on_rgb_settings
@@ -37,6 +38,8 @@ class SystemTrayIcon:
         return (
             pystray.MenuItem('Disconnect' if self.connected else 'Connect', 
                            self.on_disconnect if self.connected else self.on_connect),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem('Mode', self.on_mode_settings()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('Pump', self.on_pump_settings()),
             pystray.MenuItem('Fan', self.on_fan_settings()),
