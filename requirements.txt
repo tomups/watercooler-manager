@@ -6,3 +6,4 @@ six==1.17.0
 winshell==0.6 ; sys_platform == "win32"
 typing_extensions==4.12.2
 pywin32==310 ; sys_platform == "win32"
+pythonnet==3.0.5 ; sys_platform == "win32"

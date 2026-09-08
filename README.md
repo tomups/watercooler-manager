@@ -15,7 +15,8 @@ Should work with:
 
 - System tray interface with connection status indicator
 - Control pump voltage (7V, 8V, 11V)
-- Adjust fan speed (25%, 50%, 75%, 90%) 
+- Adjust fan speed (25%, 50%, 75%, 90%)
+- Automatic fan speed control from 25% to 90% based on the highest CPU or GPU temperature
 - RGB lighting controls:
   - On/Off toggle
   - Multiple modes: Static, Breathe, Rainbow, Breathe Rainbow
@@ -33,8 +34,21 @@ The application runs in the system tray. Right click the tray icon to see the me
 
 Press `Connect` to connect to the water cooler.
 
-Only tested on Windows 11, but might work with Linux too.
+Only tested on Windows 11, but might work with Linux too. Automatic temperature control is available on Windows and uses the bundled LibreHardwareMonitor libraries. The application requests administrator privileges so LibreHardwareMonitor can access hardware sensors.
 
+## Build on Windows
+
+Install Python 3.11, then run these commands from PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt pyinstaller
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\prepare_librehardwaremonitor.ps1
+.\.venv\Scripts\pyinstaller.exe --noconfirm --onefile --windowed --noconsole --uac-admin --hidden-import clr --icon "src/icons/connected.png" --add-data "src/icons;icons" --add-data "src/watercooler_manager;watercooler_manager" --add-binary "vendor/librehardwaremonitor/*.dll;librehardwaremonitor" --name "WaterCoolerManager" src/main.py
+```
+
+The executable is created at `dist\WaterCoolerManager.exe`.
 
 ## Thanks
 

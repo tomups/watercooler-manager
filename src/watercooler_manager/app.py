@@ -4,12 +4,17 @@ from .device import WaterCoolingDevice
 from .settings import Settings
 from .tray import SystemTrayIcon
 from .enums import PumpVoltage, RGBState
+from .temperature import LibreHardwareTemperatureMonitor, calculate_fan_speed
 import pystray
 
 class WaterCoolerManager:
     def __init__(self, version=None):
         self.settings = Settings()
         self.device = WaterCoolingDevice()
+        self.temperature_monitor = LibreHardwareTemperatureMonitor()
+        self.automatic_fan_task = None
+        self._watchdog_task = None
+        self._connect_lock = asyncio.Lock()
         self.loop = asyncio.new_event_loop()
         self.tray = SystemTrayIcon(
             on_connect=self.connect_menu,
@@ -25,40 +30,80 @@ class WaterCoolerManager:
             version=version if version is not None else "v1.0.0"
         )
 
+    async def _connection_watchdog_loop(self):
+        try:
+            while True:
+                if self.settings.auto_connect:
+                    try:
+                        if not await self.device.is_connected():
+                            async with self._connect_lock:
+                                if not await self.device.is_connected():
+                                    await self.connect_and_run()
+                    except Exception:
+                        pass
+                await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            raise
+
     def run(self):
         # Setup and start the event loop in a separate thread
         def run_event_loop():
             asyncio.set_event_loop(self.loop)
+            self._watchdog_task = self.loop.create_task(self._connection_watchdog_loop())
             self.loop.run_forever()
-        
         loop_thread = threading.Thread(target=run_event_loop, daemon=True)
         loop_thread.start()
 
         # Setup and run the system tray
         self.tray.setup()
-
-        # Auto connect on startup
-        if self.settings.auto_connect:
-            asyncio.run_coroutine_threadsafe(self.connect_and_run(), self.loop)
-
         self.tray.run()
 
     def exit_app(self):
-        future = asyncio.run_coroutine_threadsafe(self.device.disconnect(), self.loop)
+        future = asyncio.run_coroutine_threadsafe(self._shutdown(), self.loop)
         try:
-            future.result(2)
+            future.result(3)
         except Exception:
             pass
         self.loop.call_soon_threadsafe(self.loop.stop)
         self.settings.save()
         self.tray.stop()
 
+    async def _shutdown(self):
+        self._stop_automatic_fan_control()
+        if self._watchdog_task is not None:
+            self._watchdog_task.cancel()
+        await self.device.disconnect()
+        await asyncio.to_thread(self.temperature_monitor.close)
+
     def connect_menu(self):
-        asyncio.run_coroutine_threadsafe(self.connect_and_run(), self.loop)
+        asyncio.run_coroutine_threadsafe(self._safe_connect(), self.loop)
+
+    async def _safe_connect(self):
+        async with self._connect_lock:
+            if not await self.device.is_connected():
+                await self.connect_and_run()
 
     def disconnect_menu(self):
-        asyncio.run_coroutine_threadsafe(self.device.disconnect(), self.loop)
+        asyncio.run_coroutine_threadsafe(self._safe_disconnect(), self.loop)
+
+    async def _safe_disconnect(self):
+        async with self._connect_lock:
+            await self.device.disconnect()
         self.tray.update_connection_status(False)
+
+    async def _execute_command(self, command_coro_factory):
+        if not await self.device.is_connected():
+            if self.settings.auto_connect:
+                async with self._connect_lock:
+                    if not await self.device.is_connected():
+                        await self.connect_and_run()
+            else:
+                self.tray.show_notification("Device not connected")
+                return
+        if await self.device.is_connected():
+            await command_coro_factory()
+        else:
+            self.tray.show_notification("Device not connected")
 
     async def connect_and_run(self):
         self.tray.show_notification("Scanning for CoolingSystem device...")
@@ -86,11 +131,22 @@ class WaterCoolerManager:
             self.tray.update_connection_status(False)
 
     async def apply_current_settings(self):
-        await self.device.write_pump_mode(pump_voltage=self.settings.current_voltage)
-        await self.device.write_fan_mode(self.settings.current_fan_speed)
-        if not self.settings.rgb_is_off:
+        if self.settings.pump_is_off:
+            await self.device.write_pump_off()
+        else:
+            await self.device.write_pump_mode(pump_voltage=self.settings.current_voltage)
+        if self.settings.fan_is_off:
+            await self.device.write_fan_off()
+        elif self.settings.automatic_fan_speed:
+            await self.device.write_fan_mode(25)
+            self.settings.current_fan_speed = 25
+            self._start_automatic_fan_control()
+        else:
+            await self.device.write_fan_mode(self.settings.current_fan_speed)
+        if self.settings.rgb_is_off:
+            await self.device.write_rgb_off()
+        else:
             await self.device.write_rgb(*self.settings.rgb_color, self.settings.rgb_state)
-
 
     def handle_on_mode_settings(self):
         def set_low():
@@ -181,6 +237,8 @@ class WaterCoolerManager:
 
     def handle_fan_settings(self):
         menu = pystray.Menu(
+            pystray.MenuItem('Automatic Fan speed control', self._toggle_automatic_fan_control,
+                           checked=lambda _: self.settings.automatic_fan_speed),
             pystray.MenuItem('Turn Off', self._toggle_fan,
                            checked=lambda _: self.settings.fan_is_off),
             pystray.MenuItem('Speed', pystray.Menu(
@@ -233,10 +291,13 @@ class WaterCoolerManager:
     def _toggle_pump(self):
         self.settings.pump_is_off = not self.settings.pump_is_off
         if self.settings.pump_is_off:
-            asyncio.run_coroutine_threadsafe(self.device.write_pump_off(), self.loop)
+            asyncio.run_coroutine_threadsafe(
+                self._execute_command(lambda: self.device.write_pump_off()),
+                self.loop
+            )
         else:
             asyncio.run_coroutine_threadsafe(
-                self.device.write_pump_mode(pump_voltage=self.settings.current_voltage), 
+                self._execute_command(lambda: self.device.write_pump_mode(pump_voltage=self.settings.current_voltage)),
                 self.loop
             )
         self.settings.save()
@@ -245,18 +306,85 @@ class WaterCoolerManager:
         self.settings.current_voltage = voltage
         self.settings.pump_is_off = False
         asyncio.run_coroutine_threadsafe(
-            self.device.write_pump_mode(pump_voltage=voltage),
+            self._execute_command(lambda: self.device.write_pump_mode(pump_voltage=voltage)),
             self.loop
         )
         self.settings.save()
 
+    def _toggle_automatic_fan_control(self):
+        self.settings.automatic_fan_speed = not self.settings.automatic_fan_speed
+        if self.settings.automatic_fan_speed:
+            self.settings.fan_is_off = False
+            self._start_automatic_fan_control()
+        else:
+            self.loop.call_soon_threadsafe(self._stop_automatic_fan_control)
+        self.settings.save()
+
+    def _start_automatic_fan_control(self):
+        def start():
+            if self.automatic_fan_task is None or self.automatic_fan_task.done():
+                self.automatic_fan_task = self.loop.create_task(self._automatic_fan_control_loop())
+        self.loop.call_soon_threadsafe(start)
+
+    def _stop_automatic_fan_control(self):
+        if self.automatic_fan_task is not None and not self.automatic_fan_task.done():
+            self.automatic_fan_task.cancel()
+        self.automatic_fan_task = None
+
+    async def _automatic_fan_control_loop(self):
+        smoothed_temperature = None
+        missing_readings = 0
+        failure_notified = False
+        try:
+            while self.settings.automatic_fan_speed:
+                if not await self.device.is_connected():
+                    await asyncio.sleep(5)
+                    continue
+                try:
+                    temperature = await asyncio.to_thread(self.temperature_monitor.get_control_temperature)
+                except Exception as e:
+                    temperature = None
+                    if not failure_notified:
+                        self.tray.show_notification(f"Temperature sensor error: {str(e)}")
+                        failure_notified = True
+                if temperature is None:
+                    missing_readings += 1
+                    target_speed = 50 if missing_readings >= 5 else self.settings.current_fan_speed
+                else:
+                    missing_readings = 0
+                    failure_notified = False
+                    smoothed_temperature = temperature if smoothed_temperature is None else 0.25 * temperature + 0.75 * smoothed_temperature
+                    target_speed = calculate_fan_speed(smoothed_temperature)
+
+                current_speed = self.settings.current_fan_speed
+                if target_speed > current_speed:
+                    next_speed = min(current_speed + 7, target_speed)
+                else:
+                    next_speed = max(current_speed - 3, target_speed)
+                if abs(next_speed - current_speed) >= 3:
+                    await self.device.write_fan_mode(next_speed)
+                    self.settings.current_fan_speed = next_speed
+                await asyncio.sleep(2)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self.tray.show_notification(f"Automatic fan control stopped: {str(e)}")
+        finally:
+            if self.automatic_fan_task is asyncio.current_task():
+                self.automatic_fan_task = None
+
     def _toggle_fan(self):
         self.settings.fan_is_off = not self.settings.fan_is_off
         if self.settings.fan_is_off:
-            asyncio.run_coroutine_threadsafe(self.device.write_fan_off(), self.loop)
+            self.settings.automatic_fan_speed = False
+            self.loop.call_soon_threadsafe(self._stop_automatic_fan_control)
+            asyncio.run_coroutine_threadsafe(
+                self._execute_command(lambda: self.device.write_fan_off()),
+                self.loop
+            )
         else:
             asyncio.run_coroutine_threadsafe(
-                self.device.write_fan_mode(self.settings.current_fan_speed),
+                self._execute_command(lambda: self.device.write_fan_mode(self.settings.current_fan_speed)),
                 self.loop
             )
         self.settings.save()
@@ -264,8 +392,10 @@ class WaterCoolerManager:
     def _set_fan_speed(self, speed: int):
         self.settings.current_fan_speed = speed
         self.settings.fan_is_off = False
+        self.settings.automatic_fan_speed = False
+        self.loop.call_soon_threadsafe(self._stop_automatic_fan_control)
         asyncio.run_coroutine_threadsafe(
-            self.device.write_fan_mode(speed),
+            self._execute_command(lambda: self.device.write_fan_mode(speed)),
             self.loop
         )
         self.settings.save()
@@ -273,10 +403,13 @@ class WaterCoolerManager:
     def _toggle_rgb(self):
         self.settings.rgb_is_off = not self.settings.rgb_is_off
         if self.settings.rgb_is_off:
-            asyncio.run_coroutine_threadsafe(self.device.write_rgb_off(), self.loop)
+            asyncio.run_coroutine_threadsafe(
+                self._execute_command(lambda: self.device.write_rgb_off()),
+                self.loop
+            )
         else:
             asyncio.run_coroutine_threadsafe(
-                self.device.write_rgb(*self.settings.rgb_color, self.settings.rgb_state),
+                self._execute_command(lambda: self.device.write_rgb(*self.settings.rgb_color, self.settings.rgb_state)),
                 self.loop
             )
         self.settings.save()
@@ -285,7 +418,7 @@ class WaterCoolerManager:
         self.settings.rgb_state = state
         self.settings.rgb_is_off = False
         asyncio.run_coroutine_threadsafe(
-            self.device.write_rgb(*self.settings.rgb_color, state),
+            self._execute_command(lambda: self.device.write_rgb(*self.settings.rgb_color, state)),
             self.loop
         )
         self.settings.save()
@@ -294,7 +427,7 @@ class WaterCoolerManager:
         self.settings.rgb_color = (red, green, blue)
         self.settings.rgb_is_off = False
         asyncio.run_coroutine_threadsafe(
-            self.device.write_rgb(red, green, blue, self.settings.rgb_state),
+            self._execute_command(lambda: self.device.write_rgb(red, green, blue, self.settings.rgb_state)),
             self.loop
         )
         self.settings.save()

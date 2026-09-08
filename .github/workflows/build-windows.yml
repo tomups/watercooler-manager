@@ -23,9 +23,16 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
+    - name: Run tests
+      run: python -m unittest test_temperature.py
+
+    - name: Prepare LibreHardwareMonitor
+      shell: powershell
+      run: .\prepare_librehardwaremonitor.ps1
+
     - name: Build executable
-      run: |        
-        pyinstaller --noconfirm --onefile --windowed --noconsole --icon "src/icons/connected.png" --add-data "src/icons;icons" --add-data "src/watercooler_manager;watercooler_manager" --name "WaterCoolerManager" src/main.py
+      run: |
+        pyinstaller --noconfirm --onefile --windowed --noconsole --uac-admin --hidden-import clr --icon "src/icons/connected.png" --add-data "src/icons;icons" --add-data "src/watercooler_manager;watercooler_manager" --add-binary "vendor/librehardwaremonitor/*.dll;librehardwaremonitor" --name "WaterCoolerManager" src/main.py
         
     - name: Create Release
       id: create_release

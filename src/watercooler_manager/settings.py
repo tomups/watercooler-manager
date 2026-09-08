@@ -22,6 +22,7 @@ class Settings:
         self.rgb_color = (255, 0, 0)  # Default red
         self.auto_start = False
         self.auto_connect = False
+        self.automatic_fan_speed = False
         self.load()
 
     def load(self):
@@ -49,6 +50,10 @@ class Settings:
             self.rgb_color = tuple(winreg.QueryValueEx(key, "rgb_color")[0])
             self.auto_start = bool(winreg.QueryValueEx(key, "auto_start")[0])
             self.auto_connect = bool(winreg.QueryValueEx(key, "auto_connect")[0])
+            try:
+                self.automatic_fan_speed = bool(winreg.QueryValueEx(key, "automatic_fan_speed")[0])
+            except FileNotFoundError:
+                pass
             winreg.CloseKey(key)
         except:
             pass
@@ -66,6 +71,7 @@ class Settings:
             winreg.SetValueEx(key, "rgb_color", 0, winreg.REG_BINARY, bytes(self.rgb_color))
             winreg.SetValueEx(key, "auto_start", 0, winreg.REG_DWORD, int(self.auto_start))
             winreg.SetValueEx(key, "auto_connect", 0, winreg.REG_DWORD, int(self.auto_connect))
+            winreg.SetValueEx(key, "automatic_fan_speed", 0, winreg.REG_DWORD, int(self.automatic_fan_speed))
             winreg.CloseKey(key)
         except:
             pass
@@ -83,6 +89,7 @@ class Settings:
                 self.rgb_color = tuple(config['rgb_color'])
                 self.auto_start = config['auto_start']
                 self.auto_connect = config['auto_connect']
+                self.automatic_fan_speed = config.get('automatic_fan_speed', False)
         except:
             pass
 
@@ -97,7 +104,8 @@ class Settings:
                 'rgb_is_off': self.rgb_is_off,
                 'rgb_color': self.rgb_color,
                 'auto_start': self.auto_start,
-                'auto_connect': self.auto_connect
+                'auto_connect': self.auto_connect,
+                'automatic_fan_speed': self.automatic_fan_speed
             }
             with open(self.CONFIG_FILE, 'w') as f:
                 json.dump(config, f)
