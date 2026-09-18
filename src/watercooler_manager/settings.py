@@ -20,6 +20,10 @@ class Settings:
         self.rgb_state = RGBState.STATIC
         self.rgb_is_off = False
         self.rgb_color = (255, 0, 0)  # Default red
+        self.fan_rgb_enabled = False
+        self.fan_rgb_is_off = False
+        self.fan_rgb_state = RGBState.STATIC
+        self.fan_rgb_color = (255, 0, 0)
         self.auto_start = False
         self.auto_connect = False
         self.load()
@@ -49,6 +53,10 @@ class Settings:
             self.rgb_color = tuple(winreg.QueryValueEx(key, "rgb_color")[0])
             self.auto_start = bool(winreg.QueryValueEx(key, "auto_start")[0])
             self.auto_connect = bool(winreg.QueryValueEx(key, "auto_connect")[0])
+            try:
+                self._load_fan_rgb(json.loads(winreg.QueryValueEx(key, "fan_rgb")[0]))
+            except (OSError, ValueError, TypeError, KeyError):
+                pass
             winreg.CloseKey(key)
         except:
             pass
@@ -66,6 +74,7 @@ class Settings:
             winreg.SetValueEx(key, "rgb_color", 0, winreg.REG_BINARY, bytes(self.rgb_color))
             winreg.SetValueEx(key, "auto_start", 0, winreg.REG_DWORD, int(self.auto_start))
             winreg.SetValueEx(key, "auto_connect", 0, winreg.REG_DWORD, int(self.auto_connect))
+            winreg.SetValueEx(key, "fan_rgb", 0, winreg.REG_SZ, json.dumps(self._fan_rgb_config()))
             winreg.CloseKey(key)
         except:
             pass
@@ -83,6 +92,7 @@ class Settings:
                 self.rgb_color = tuple(config['rgb_color'])
                 self.auto_start = config['auto_start']
                 self.auto_connect = config['auto_connect']
+                self._load_fan_rgb(config.get('fan_rgb', {}))
         except:
             pass
 
@@ -97,20 +107,34 @@ class Settings:
                 'rgb_is_off': self.rgb_is_off,
                 'rgb_color': self.rgb_color,
                 'auto_start': self.auto_start,
-                'auto_connect': self.auto_connect
+                'auto_connect': self.auto_connect,
+                'fan_rgb': self._fan_rgb_config()
             }
             with open(self.CONFIG_FILE, 'w') as f:
                 json.dump(config, f)
         except:
-            pass 
+            pass
+
+    def _fan_rgb_config(self):
+        return dict(enabled=self.fan_rgb_enabled, off=self.fan_rgb_is_off,
+                    state=int(self.fan_rgb_state), color=self.fan_rgb_color)
+
+    def _load_fan_rgb(self, config):
+        state = RGBState(config.get('state', 0))
+        color = tuple(config.get('color', (255, 0, 0)))
+        if len(color) != 3 or not all(isinstance(c, int) and 0 <= c <= 255 for c in color):
+            raise ValueError("Invalid fan RGB color")
+        self.fan_rgb_enabled = bool(config.get('enabled', False))
+        self.fan_rgb_is_off = bool(config.get('off', False))
+        self.fan_rgb_state, self.fan_rgb_color = state, color
 
     def set_autostart(self, autostart: bool):
         self.auto_start = autostart
-        
+
         if platform.system() == 'Windows':
             startup_dir = winshell.startup()
             shortcut_path = join(startup_dir, f"{splitext(basename(executable))[0]}.lnk")
-            
+
             if autostart:
                 winshell.CreateShortcut(
                     Path=shortcut_path,
@@ -120,5 +144,5 @@ class Settings:
                 )
             elif os.path.exists(shortcut_path):
                 os.remove(shortcut_path)
-        
-        self.save() 
+
+        self.save()

@@ -8,9 +8,10 @@ import os
 import webbrowser
 
 class SystemTrayIcon:
-    def __init__(self, on_connect: Callable, on_disconnect: Callable, on_mode_settings: Callable, 
+    def __init__(self, on_connect: Callable, on_disconnect: Callable, on_mode_settings: Callable,
                  on_pump_settings: Callable, on_fan_settings: Callable,
-                 on_rgb_settings: Callable, on_autostart_settings: Callable, on_autoconnect_settings: Callable, on_exit: Callable, settings, version: str = APP_VERSION):
+                 on_rgb_settings: Callable, on_autostart_settings: Callable, on_autoconnect_settings: Callable, on_exit: Callable, settings, version: str = APP_VERSION,
+                 on_fan_rgb_settings=None, on_priming=None, on_cancel_priming=None):
         self.icon = None
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect
@@ -24,26 +25,49 @@ class SystemTrayIcon:
         self.connected = False
         self.settings = settings
         self.version = version
+        self.on_fan_rgb_settings = on_fan_rgb_settings
+        self.on_priming = on_priming
+        self.on_cancel_priming = on_cancel_priming
+        self.busy = False
+        self.priming = False
+        self.priming_cycle = 0
+        self.firmware_version = None
+        self.flow_status = "unknown"
+        self.supports_fan_rgb = False
 
-    def create_icon_image(self, connected: bool = False):        
+    def create_icon_image(self, connected: bool = False):
         icon_dir = os.path.join(os.path.dirname(__file__), "..", "icons")
         if connected:
             return Image.open(os.path.join(icon_dir, "connected.png"))
         return Image.open(os.path.join(icon_dir, "disconnected.png"))
 
-    def create_menu(self):        
+    def create_menu(self):
         def open_releases(icon, item):
             webbrowser.open("https://github.com/tomups/watercooler-manager/releases/")
 
         return (
-            pystray.MenuItem('Disconnect' if self.connected else 'Connect', 
-                           self.on_disconnect if self.connected else self.on_connect),
+            pystray.MenuItem('Disconnect' if self.connected else 'Connect',
+                           self.on_disconnect if self.connected else self.on_connect,
+                           enabled=lambda _: not self.busy),
+            pystray.MenuItem(f'Flow: {self.flow_status}', None, enabled=False),
+            pystray.MenuItem('Firmware: ' + (self.firmware_version or
+                            ('unknown (unverified)' if self.connected else 'unknown')),
+                            None, enabled=False),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem('Mode', self.on_mode_settings()),
+            pystray.MenuItem('Mode', self.on_mode_settings(), enabled=lambda _: not self.priming and not self.busy),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem('Pump', self.on_pump_settings()),
-            pystray.MenuItem('Fan', self.on_fan_settings()),
-            pystray.MenuItem('RGB', self.on_rgb_settings()),
+            pystray.MenuItem('Pump', self.on_pump_settings(), enabled=lambda _: not self.priming and not self.busy),
+            pystray.MenuItem('Fan', self.on_fan_settings(), enabled=lambda _: not self.priming and not self.busy),
+            pystray.MenuItem('Head RGB', self.on_rgb_settings(), enabled=lambda _: not self.priming and not self.busy),
+            pystray.MenuItem('Fan RGB (Mk2)', self.on_fan_rgb_settings() if self.on_fan_rgb_settings else None,
+                            enabled=lambda _: self.connected and self.supports_fan_rgb
+                            and not self.priming and not self.busy),
+            pystray.MenuItem('Water filling', pystray.Menu(
+                pystray.MenuItem('Fill reservoir and attach hoses before starting', None, enabled=False),
+                pystray.MenuItem('Start filling (~68 seconds)', self.on_priming,
+                                enabled=lambda _: self.connected and not self.priming and not self.busy),
+                pystray.MenuItem(f'Cancel filling (cycle {self.priming_cycle}/8)', self.on_cancel_priming,
+                                enabled=lambda _: self.priming))),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('Settings', pystray.Menu(
                 pystray.MenuItem(f"Version: {self.version}", None, enabled=False),
@@ -68,10 +92,26 @@ class SystemTrayIcon:
             self.icon.stop()
 
     def update_connection_status(self, connected: bool):
+        self.connected = connected
         if self.icon:
-            self.connected = connected
             self.icon.icon = self.create_icon_image(connected=connected)
+        self.refresh()
+
+    def refresh(self):
+        if self.icon:
             self.icon.menu = self.create_menu()
+            self.icon.title = f"Water Cooler Manager - Flow: {self.flow_status}"
+            self.icon.update_menu()
+
+    def update_device_status(self, firmware_version, flow_status, supports_fan_rgb):
+        self.firmware_version = firmware_version
+        self.flow_status = flow_status
+        self.supports_fan_rgb = supports_fan_rgb
+        self.refresh()
+
+    def update_priming_progress(self, cycle):
+        self.priming_cycle = cycle
+        self.refresh()
 
     def show_notification(self, message: str, title: str = "WaterCooler"):
         if self.icon:
