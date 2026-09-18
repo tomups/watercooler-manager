@@ -1,6 +1,6 @@
 # Water Cooler Manager
 
-A system tray utility to manage LCT21001 / LCT21002 laptop water coolers (typically for Tongfang laptops).
+A system tray utility to manage LCT21001 / LCT22002 laptop water coolers (typically for Tongfang laptops).
 
 ![Captura de pantalla 2024-12-16 014051](https://github.com/user-attachments/assets/d9b69dd2-7aa6-4dce-97bc-4bb408dd60b8)
 
