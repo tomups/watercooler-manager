@@ -42,69 +42,6 @@ Press `Connect` to connect to the water cooler.
 
 Only tested on Windows 11, but might work with Linux too.
 
-## Diagnostics and maintenance
-
-The tray menu displays firmware and flow status. A missing firmware reply leaves the
-connection marked unverified, but controls remain available. Flow is **unknown**
-until a valid meter response arrives, when the pump is off, or when a meter query
-times out. The app accepts device pushes and also queries the meter periodically
-(15 seconds after the previous query completes, with a 5-second response timeout).
-Flow faults trigger a notification; the app does not change GPU settings or shut
-down the computer. Reported flow is a device status, not a measured flow rate.
-
-Pump startup displays **starting** for up to five seconds to allow flow to establish
-(about two seconds in hardware testing). A valid OK reading ends this grace period
-early. If the latest reading still indicates a fault at expiry, the fault is shown;
-if no reading arrives, the status becomes unknown. Subsequent pump-setting writes
-while the pump is already running do not restart the grace period.
-
-Use **RGB** to control the visible lighting. Tests on LCT22002 firmware 2.0.0.4
-confirmed that `0x1E` controls the base lighting, while `0x33` activates effects
-on those same lights: selector `1` breathes in one color, `2` smoothly cycles
-colors, and `3` changes color between breaths. Selectors `4`, `5`, and `6` provide
-Spiral, Rotating Rainbow, and Fast Color Wave. These are not independent zones.
-All effects appear in the single **RGB → Mode** menu. The three additional effects
-are available on Mk2 only and generate their own colors, so Color is disabled
-while one is selected.
-
-For Mk2 updates, the app disables the active effect, sets the base color with
-`0x1E`, and enables the requested animation with `0x33`. Static and OFF leave
-`0x33` disabled so the base setting is visible. The same sequence is used when
-restoring saved settings. Mk1 devices retain their `0x1E`-only lighting commands.
-The three additional effects use a static base (`0x1E` selector `0`). If a saved
-Mk2-only effect is restored on Mk1, the app uses Static without overwriting the
-saved effect. Switching back to Mk2 restores it.
-
-The experimental Fan RGB menu has been removed. Its old preferences are ignored
-and removed when settings are saved; existing RGB color, effect, and off settings
-are preserved.
-
-For filling, attach the hoses and fill the reservoir first. Choose **Water filling →
-Start filling**. The sequence takes about 68 seconds and shows the current cycle.
-Normal controls are disabled during filling. **Cancel filling**, **Disconnect**, and
-**Exit** cancel the cycle and attempt to stop filling and restore saved settings
-before disconnecting. A lost Bluetooth link prevents restoration until reconnect;
-errors are reported rather than silently discarded.
-
-**Standby** turns off the pump, fan, and lighting while keeping Bluetooth connected.
-Saved settings are preserved. **Resume** restores them, including lighting effects
-and any outputs saved as off. Normal controls and filling are disabled during
-standby. A failed resume attempts to return to standby rather than leaving a
-partially restored cooler running behind a Standby indicator.
-
-On the tested LCT22002 firmware 2.0.0.4, **Disconnect** and **Exit** simply close
-Bluetooth: the device stops cooling and enters pairing mode. Other models,
-unknown firmware, and untested versions retain sleep-before-disconnect behavior.
-The separate `write_line_off()` command remains available in the device layer,
-but showed no additional visible benefit over plain disconnect on the tested unit.
-
-The `0x30` query returned only the firmware version during hardware testing, so
-it is not exposed as additional telemetry. Undecoded firmware-only configuration
-and storage commands are not exposed.
-On the tested unit, toggling `0x1D` produced no visible effect with normal RGB on
-or off, and toggling `0x1A` produced no observable change while cooling and lighting
-were active. Neither command is exposed as an app control.
-
 ## Development and verification
 
 This project uses **mise for Python and uv management**, and **uv for dependencies
