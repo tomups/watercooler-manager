@@ -1,5 +1,5 @@
 
-APP_VERSION = "v1.2.0"
+APP_VERSION = "v1.3.0"
 
 import pystray
 from PIL import Image

@@ -32,7 +32,7 @@ class WaterCoolerManager:
             on_autoconnect_settings=self.handle_autoconnect_settings,
             on_exit=self.exit_app,
             settings=self.settings,
-            version=version if version is not None else "v1.0.0",
+            version=version if version is not None else "v1.3.0",
             on_priming=lambda: self._submit(self.start_priming()),
             on_cancel_priming=lambda: self._submit(self.cancel_priming()),
             on_standby=lambda: self._submit(self.set_standby(not self.tray.standby)),
