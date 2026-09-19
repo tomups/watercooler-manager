@@ -71,11 +71,46 @@ commands are not exposed.
 
 ## Development and verification
 
-Use Python 3.11 or newer and install `requirements.txt`. On Windows, run:
+This project uses **mise for Python and uv management**, and **uv for dependencies
+and the project virtual environment**. Python 3.14.7 and uv are pinned in
+`mise.toml`; `.python-version` also tells uv which Python to select. Python downloads
+through uv are disabled so that mise remains responsible for the interpreter.
+
+From PowerShell in the repository directory, set up the project:
 
 ```powershell
-python -m unittest discover -s tests -v
+mise trust
+mise install
+mise exec -- uv sync --locked
 ```
+
+Start the app (it appears in the system tray):
+
+```powershell
+mise exec -- uv run src/main.py
+```
+
+If mise is already activated in your shell, `uv run src/main.py` is sufficient.
+No manual environment activation is needed. uv creates and maintains `.venv`;
+the old `.test-venv` is no longer used. Exit any other copy before local testing.
+
+Run the tests:
+
+```powershell
+mise exec -- uv run --locked python -m unittest discover -s tests -v
+```
+
+Dependencies live in `pyproject.toml` and exact resolved versions in `uv.lock`.
+Use `mise exec -- uv add <package>` to add a dependency. When upgrading Python,
+update both `mise.toml` and `.python-version`, then run `mise install` and `uv sync`.
+
+Build the Windows executable using the optional build dependency group:
+
+```powershell
+mise exec -- uv run --locked --group build pyinstaller --noconfirm --onefile --windowed --noconsole --icon "src/icons/connected.png" --add-data "src/icons;icons" --add-data "src/watercooler_manager;watercooler_manager" --name "WaterCoolerManager" src/main.py
+```
+
+Both CI workflows use mise and the same uv lockfile.
 
 Tests mock Bluetooth and settings storage; they do not connect to a cooler or
 modify the user's preferences. They cover framing, handshake fallback, flow

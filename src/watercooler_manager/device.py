@@ -101,7 +101,8 @@ class WaterCoolingDevice:
                 self._notification(sender, data)
 
         try:
-            await self.client.connect(timeout=5.0)
+            # Bleak 3 takes no connection options here; bound the whole operation.
+            await asyncio.wait_for(self.client.connect(), timeout=5.0)
             self.connected_model = await self.device_model_from_name(device.name or "")
             await self.client.start_notify(NordicUART.CHAR_RX, receive)
             await self.write_buffer(b"sw")
