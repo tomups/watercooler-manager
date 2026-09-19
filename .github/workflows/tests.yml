@@ -1,0 +1,12 @@
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+      - run: uv sync --locked
+      - run: uv run --locked python -m unittest discover -s tests -v

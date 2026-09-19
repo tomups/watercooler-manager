@@ -66,6 +66,11 @@ class Settings:
             winreg.SetValueEx(key, "rgb_color", 0, winreg.REG_BINARY, bytes(self.rgb_color))
             winreg.SetValueEx(key, "auto_start", 0, winreg.REG_DWORD, int(self.auto_start))
             winreg.SetValueEx(key, "auto_connect", 0, winreg.REG_DWORD, int(self.auto_connect))
+            # Drop the retired experimental control without changing RGB preferences.
+            try:
+                winreg.DeleteValue(key, "fan_rgb")
+            except FileNotFoundError:
+                pass
             winreg.CloseKey(key)
         except:
             pass
@@ -102,15 +107,15 @@ class Settings:
             with open(self.CONFIG_FILE, 'w') as f:
                 json.dump(config, f)
         except:
-            pass 
+            pass
 
     def set_autostart(self, autostart: bool):
         self.auto_start = autostart
-        
+
         if platform.system() == 'Windows':
             startup_dir = winshell.startup()
             shortcut_path = join(startup_dir, f"{splitext(basename(executable))[0]}.lnk")
-            
+
             if autostart:
                 winshell.CreateShortcut(
                     Path=shortcut_path,
@@ -120,5 +125,5 @@ class Settings:
                 )
             elif os.path.exists(shortcut_path):
                 os.remove(shortcut_path)
-        
-        self.save() 
+
+        self.save()
