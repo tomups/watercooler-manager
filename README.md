@@ -22,7 +22,8 @@ Should work with:
   - Color presets: Red, Green, Blue, White
 - Auto-start on boot (Windows only)
 - Auto-connect to the water cooler on startup
-- Flow status (unknown / OK / fault), with fault notifications while the pump is running
+- Flow status (unknown / starting / OK / fault), with a pump-start grace period
+- Standby without disconnecting, and Resume using saved settings
 - Firmware version diagnostics and explicit feedback when the firmware query times out
 - Restore saved pump, fan, and lighting on/off states when connecting
 - One RGB control for static colors and Mk2 lighting effects
@@ -50,6 +51,12 @@ times out. The app accepts device pushes and also queries the meter periodically
 Flow faults trigger a notification; the app does not change GPU settings or shut
 down the computer. Reported flow is a device status, not a measured flow rate.
 
+Pump startup displays **starting** for up to five seconds to allow flow to establish
+(about two seconds in hardware testing). A valid OK reading ends this grace period
+early. If the latest reading still indicates a fault at expiry, the fault is shown;
+if no reading arrives, the status becomes unknown. Subsequent pump-setting writes
+while the pump is already running do not restart the grace period.
+
 Use **RGB** to control the visible lighting. Tests on LCT22002 firmware 2.0.0.4
 confirmed that `0x1E` controls the base lighting, while `0x33` activates effects
 on those same lights: selector `1` breathes in one color, `2` smoothly cycles
@@ -71,11 +78,21 @@ Normal controls are disabled during filling. **Cancel filling**, **Disconnect**,
 before disconnecting. A lost Bluetooth link prevents restoration until reconnect;
 errors are reported rather than silently discarded.
 
-Disconnect and Exit continue to send the existing sleep command. It is now named
-`write_sleep()` instead of `write_reset()`. The separate OEM `write_line_off()`
-command is available at the device layer but is not used automatically pending
-hardware validation. Undecoded telemetry and firmware-only configuration/storage
-commands are not exposed.
+**Standby** turns off the pump, fan, and lighting while keeping Bluetooth connected.
+Saved settings are preserved. **Resume** restores them, including lighting effects
+and any outputs saved as off. Normal controls and filling are disabled during
+standby. A failed resume attempts to return to standby rather than leaving a
+partially restored cooler running behind a Standby indicator.
+
+On the tested LCT22002 firmware 2.0.0.4, **Disconnect** and **Exit** simply close
+Bluetooth: the device stops cooling and enters pairing mode. Other models,
+unknown firmware, and untested versions retain sleep-before-disconnect behavior.
+The separate `write_line_off()` command remains available in the device layer,
+but showed no additional visible benefit over plain disconnect on the tested unit.
+
+The `0x30` query returned only the firmware version during hardware testing, so
+it is not exposed as additional telemetry. Undecoded firmware-only configuration
+and storage commands are not exposed.
 
 ## Development and verification
 
@@ -126,8 +143,11 @@ status, command limits, saved-state restoration, Mk2 gating, and filling cleanup
 
 Before releasing, check on both cooler models: firmware reporting, flow status
 with the pump on/off, connection loss and reconnect, all saved off states, and
-filling completion/cancellation. Check Mk2 RGB changes and off after reconnect. Line-off
-behavior remains unverified and must be tested before changing the disconnect policy.
+filling completion/cancellation. Check Mk2 RGB changes and off after reconnect,
+Standby/Resume, and output shutdown on Disconnect. Plain disconnect and line-off
+were both observed to stop outputs and return to pairing on LCT22002 2.0.0.4;
+sleep stopped outputs while retaining the connection. Other firmware needs its
+own validation before extending the plain-disconnect policy.
 
 Protocol reference: [Chocapikk's Uniwill BLE reverse-engineering notes](https://gist.github.com/Chocapikk/0baa8e68b87f8ed0873c39504184ebc6).
 

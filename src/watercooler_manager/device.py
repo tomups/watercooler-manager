@@ -1,5 +1,6 @@
 import asyncio
 import re
+import time
 from contextlib import suppress
 from typing import Optional, List
 
@@ -12,6 +13,7 @@ class WaterCoolingDevice:
     FIRMWARE_TIMEOUT = 3.0
     METER_TIMEOUT = 5.0
     METER_INTERVAL = 15.0
+    FLOW_STARTUP_GRACE = 5.0
 
     def __init__(self, on_status=None, on_disconnect=None):
         self.client: Optional[BleakClient] = None
@@ -27,6 +29,30 @@ class WaterCoolingDevice:
         self._write_lock = asyncio.Lock()
         self._loop = None
         self._closing = False
+        self._meter_state = None
+        self._flow_start_deadline = 0.0
+        self._flow_start_timer = None
+
+    def _cancel_flow_startup(self):
+        if self._flow_start_timer:
+            self._flow_start_timer.cancel()
+            self._flow_start_timer = None
+        self._flow_start_deadline = 0.0
+
+    def _update_flow(self):
+        if not self.pump_running:
+            self._set_flow("unknown")
+        elif self._meter_state == 2:
+            self._cancel_flow_startup()
+            self._set_flow("OK")
+        elif time.monotonic() < self._flow_start_deadline:
+            self._set_flow("starting")
+        else:
+            self._set_flow("unknown" if self._meter_state is None else "fault")
+
+    def _finish_flow_startup(self):
+        self._cancel_flow_startup()
+        self._update_flow()
 
     def _set_flow(self, status):
         if self.flow_status != status:
@@ -34,6 +60,8 @@ class WaterCoolingDevice:
             self.on_status()
 
     def _clear_status(self):
+        self._cancel_flow_startup()
+        self._meter_state = None
         self.connected_model = None
         self.firmware_version = None
         self.pump_running = False
@@ -63,8 +91,8 @@ class WaterCoolingDevice:
                     data[1] not in (Commands.METER_PUSH, Commands.QUERY_METER)):
                 return
             self._meter_received.set()
-            self._set_flow(("OK" if data[3] == 2 else "fault")
-                           if self.pump_running else "unknown")
+            self._meter_state = data[3]
+            self._update_flow()
             return
         # Do not mistake unknown binary telemetry for a firmware version.
         try:
@@ -126,10 +154,17 @@ class WaterCoolingDevice:
                 await self.query_meter()
                 await asyncio.wait_for(self._meter_received.wait(), self.METER_TIMEOUT)
             except Exception:
+                self._meter_state = None
                 self._set_flow("unknown")
             await asyncio.sleep(self.METER_INTERVAL)
 
-    async def disconnect(self, sleep=True):
+    async def disconnect(self, sleep=None):
+        if sleep is None:
+            # Plain BLE disconnect stops all outputs on the tested Mk2 firmware.
+            # Preserve sleep-before-disconnect for unverified models/versions.
+            sleep = not (self.connected_model == LCTDeviceModel.LCT22002 and
+                         self.firmware_version in ("MCU F/W Version: 2.0.0.4",
+                                                   "CoolingSystem FW V2.0.0.4"))
         self._closing = True
         if self._monitor_task:
             self._monitor_task.cancel()
@@ -210,17 +245,27 @@ class WaterCoolingDevice:
         await self._command(Commands.PUMP, 1, pump_duty_cycle_percent, pump_voltage)
         was_running = self.pump_running
         self.pump_running = pump_duty_cycle_percent > 0
-        if not was_running or not self.pump_running:
+        if self.pump_running and not was_running:
+            self._cancel_flow_startup()
+            self._meter_state = None
+            self._flow_start_deadline = time.monotonic() + self.FLOW_STARTUP_GRACE
+            self._flow_start_timer = asyncio.get_running_loop().call_later(
+                self.FLOW_STARTUP_GRACE, self._finish_flow_startup)
+            self._set_flow("starting")
+        elif not self.pump_running:
+            self._cancel_flow_startup()
             self._set_flow("unknown")
 
     async def write_pump_off(self):
         await self._command(Commands.PUMP)
         self.pump_running = False
+        self._cancel_flow_startup()
         self._set_flow("unknown")
 
     async def write_sleep(self):
         await self._command(Commands.SYSTEM_MODE, 0, 1)
         self.pump_running = False
+        self._cancel_flow_startup()
         self._set_flow("unknown")
 
     async def write_line_off(self):

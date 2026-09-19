@@ -35,6 +35,7 @@ class WaterCoolerManager:
             version=version if version is not None else "v1.0.0",
             on_priming=lambda: self._submit(self.start_priming()),
             on_cancel_priming=lambda: self._submit(self.cancel_priming()),
+            on_standby=lambda: self._submit(self.set_standby(not self.tray.standby)),
         )
 
     def _submit(self, coroutine):
@@ -77,6 +78,37 @@ class WaterCoolerManager:
 
     def disconnect_menu(self):
         self._submit(self.disconnect())
+
+    async def set_standby(self, standby):
+        async with self._operation_lock:
+            if (self._closing or self._disconnecting or self.tray.priming
+                    or not await self.device.is_connected() or self.tray.standby == standby):
+                return
+            self.tray.busy = True
+            self.tray.refresh()
+            try:
+                if standby:
+                    await self.device.write_sleep()
+                else:
+                    try:
+                        await self.apply_current_settings()
+                    except Exception:
+                        # A partial resume must not leave outputs running behind
+                        # a Standby indicator. Return to sleep or disconnect.
+                        try:
+                            await self.device.write_sleep()
+                        except Exception:
+                            try:
+                                await self.device.disconnect()
+                            finally:
+                                self.tray.update_connection_status(False)
+                        raise
+                if not await self.device.is_connected():
+                    raise RuntimeError("Cooler disconnected during standby/resume")
+                self.tray.standby = standby
+            finally:
+                self.tray.busy = False
+                self.tray.refresh()
 
     async def disconnect(self):
         if self._disconnecting:
@@ -169,7 +201,7 @@ class WaterCoolerManager:
     def _change_settings(self, **changes):
         async def apply():
             async with self._operation_lock:
-                if self._closing or self._disconnecting or self.tray.priming:
+                if self._closing or self._disconnecting or self.tray.priming or self.tray.standby:
                     return
                 for name, value in changes.items():
                     setattr(self.settings, name, value)
@@ -181,7 +213,7 @@ class WaterCoolerManager:
 
     async def start_priming(self):
         async with self._operation_lock:
-            if (self._closing or self._disconnecting or self.tray.priming
+            if (self._closing or self._disconnecting or self.tray.priming or self.tray.standby
                     or not await self.device.is_connected()):
                 return
             self.tray.priming = True

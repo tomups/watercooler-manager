@@ -128,7 +128,62 @@ class DeviceTests(unittest.IsolatedAsyncioTestCase):
         await self.device.write_pump_off()
         self.assertEqual(self.device.flow_status, 'unknown')
         await self.device.write_pump_mode()
+        self.assertEqual(self.device.flow_status, 'starting')
+
+    async def test_startup_grace_delays_fault_and_expires_without_another_packet(self):
+        await self.device.write_pump_mode()
+        self.device._notification(None, bytes.fromhex('FE 31 05 01 EF'))
+        self.assertEqual(self.device.flow_status, 'starting')
+        self.device._finish_flow_startup()
+        self.assertEqual(self.device.flow_status, 'fault')
+
+    async def test_startup_success_ends_grace_immediately(self):
+        await self.device.write_pump_mode()
+        self.device._notification(None, bytes.fromhex('FE 31 05 02 EF'))
+        self.assertEqual(self.device.flow_status, 'OK')
+        self.assertIsNone(self.device._flow_start_timer)
+        self.device._notification(None, bytes.fromhex('FE 31 05 03 EF'))
+        self.assertEqual(self.device.flow_status, 'fault')
+
+    async def test_startup_without_response_stays_unknown_after_grace(self):
+        await self.device.write_pump_mode()
+        self.device._finish_flow_startup()
         self.assertEqual(self.device.flow_status, 'unknown')
+
+    async def test_repeated_pump_writes_do_not_extend_grace(self):
+        await self.device.write_pump_mode()
+        deadline = self.device._flow_start_deadline
+        timer = self.device._flow_start_timer
+        await self.device.write_pump_mode(pump_voltage=PumpVoltage.V8)
+        self.assertEqual(self.device._flow_start_deadline, deadline)
+        self.assertIs(self.device._flow_start_timer, timer)
+
+    async def test_sleep_cancels_startup_grace(self):
+        await self.device.write_pump_mode()
+        timer = self.device._flow_start_timer
+        await self.device.write_sleep()
+        self.assertTrue(timer.cancelled())
+        self.assertFalse(self.device.pump_running)
+        self.assertEqual(self.device.flow_status, 'unknown')
+
+    async def test_tested_mk2_disconnect_sends_no_sleep(self):
+        self.device.firmware_version = 'MCU F/W Version: 2.0.0.4'
+        await self.device.disconnect()
+        self.assertEqual(self.client.writes, [])
+        self.assertFalse(self.client.is_connected)
+
+    async def test_unverified_devices_keep_sleep_before_disconnect(self):
+        for model, firmware in (('LCT21001', 'MCU F/W Version: 2.0.0.4'),
+                                ('LCT22002', None), ('LCT22002', 'MCU F/W Version: 2.0.0.5')):
+            with self.subTest(model=model, firmware=firmware):
+                client = FakeClient()
+                client.is_connected = True
+                device = WaterCoolingDevice()
+                device.client = client
+                device.connected_model = model
+                device.firmware_version = firmware
+                await device.disconnect()
+                self.assertEqual(client.writes, [bytes.fromhex('FE 19 00 01 00 00 00 EF')])
 
     async def test_malformed_notifications_are_ignored(self):
         for data in (b'', b'\xfe', bytes.fromhex('FE 31 00 02'),
@@ -294,6 +349,70 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.app.cancel_priming()
         self.app.loop.close()
+
+    async def test_standby_preserves_settings_and_resume_restores_effects(self):
+        self.app.settings.rgb_state = RGBState.COLORFUL
+        self.app.settings.rgb_color = (0, 0, 255)
+        self.app.settings.fan_is_off = True
+        before = vars(self.app.settings).copy()
+        self.app.tray.update_connection_status(True)
+        await self.app.set_standby(True)
+        self.assertTrue(self.app.tray.standby)
+        self.assertTrue(self.client.is_connected)
+        self.assertEqual(self.client.writes, [bytes.fromhex('FE 19 00 01 00 00 00 EF')])
+        self.assertEqual(vars(self.app.settings), before)
+        menu = {item.text: item for item in self.app.tray.create_menu()}
+        self.assertTrue(menu['Resume'].enabled)
+        self.assertFalse(menu['RGB'].enabled)
+        self.assertFalse(menu['Pump'].enabled)
+        self.client.writes.clear()
+        await self.app.set_standby(False)
+        self.assertFalse(self.app.tray.standby)
+        self.assertEqual(self.client.writes, [bytes.fromhex(p) for p in (
+            'FE 1C 01 3C 02 00 00 EF', 'FE 1B 00 00 00 00 00 EF',
+            'FE 33 00 00 00 00 00 EF', 'FE 1E 01 00 00 FF 02 EF',
+            'FE 33 01 00 00 FF 02 EF')])
+        self.assertEqual(vars(self.app.settings), before)
+        self.app.settings.save.assert_not_called()
+
+    async def test_failed_standby_does_not_claim_outputs_are_off(self):
+        self.app.device.write_sleep = AsyncMock(side_effect=RuntimeError('sleep failed'))
+        with self.assertRaisesRegex(RuntimeError, 'sleep failed'):
+            await self.app.set_standby(True)
+        self.assertFalse(self.app.tray.standby)
+        self.assertFalse(self.app.tray.busy)
+
+    async def test_failed_resume_returns_to_sleep(self):
+        await self.app.set_standby(True)
+        self.app.device.write_fan_mode = AsyncMock(side_effect=RuntimeError('fan failed'))
+        with self.assertRaisesRegex(RuntimeError, 'Could not restore'):
+            await self.app.set_standby(False)
+        self.assertTrue(self.app.tray.standby)
+        self.assertFalse(self.app.tray.busy)
+        self.assertFalse(self.app.device.pump_running)
+        self.assertEqual(self.client.writes[-1], bytes.fromhex('FE 19 00 01 00 00 00 EF'))
+
+    async def test_standby_blocks_priming_and_settings_changes(self):
+        await self.app.set_standby(True)
+        self.client.writes.clear()
+        await self.app.start_priming()
+        self.assertIsNone(self.app._priming_task)
+        tasks = []
+        self.app._submit = lambda coro: tasks.append(asyncio.create_task(coro))
+        original_color = self.app.settings.rgb_color
+        self.app._change_settings(rgb_color=(0, 255, 0))
+        await asyncio.gather(*tasks)
+        self.assertEqual(self.app.settings.rgb_color, original_color)
+        self.assertEqual(self.client.writes, [])
+
+    async def test_disconnect_clears_standby(self):
+        self.app.device.firmware_version = 'MCU F/W Version: 2.0.0.4'
+        await self.app.set_standby(True)
+        self.client.writes.clear()
+        await self.app.disconnect()
+        self.assertFalse(self.app.tray.standby)
+        self.assertFalse(self.app.tray.connected)
+        self.assertEqual(self.client.writes, [])
 
     async def test_restore_all_off_states(self):
         settings = self.app.settings
