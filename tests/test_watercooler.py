@@ -78,12 +78,20 @@ class DeviceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_mk1_lighting_does_not_send_mk2_command(self):
         self.device.connected_model = 'LCT21001'
-        for state in RGBState:
+        for state in list(RGBState)[:4]:
             await self.device.write_rgb(0, 255, 0, state)
         await self.device.write_rgb_off()
         self.assertEqual(self.client.writes, [bytes([0xFE, 0x1E, 1, 0, 255, 0, state, 0xEF])
-                                             for state in RGBState] +
+                                             for state in list(RGBState)[:4]] +
                          [bytes.fromhex('FE 1E 00 00 00 00 00 EF')])
+
+    async def test_unsupported_effects_are_rejected_before_writing(self):
+        for model in ('LCT21001', None):
+            self.device.connected_model = model
+            for state in (4, 5, 6, 7, -1):
+                with self.assertRaises(ValueError):
+                    await self.device.write_rgb(0, 255, 0, state)
+        self.assertEqual(self.client.writes, [])
 
     async def test_mk2_modes_use_hardware_verified_effect_commands(self):
         for state in RGBState:
@@ -91,7 +99,8 @@ class DeviceTests(unittest.IsolatedAsyncioTestCase):
                 self.client.writes.clear()
                 await self.device.write_rgb(0, 255, 0, state)
                 expected = [bytes.fromhex('FE 33 00 00 00 00 00 EF'),
-                            bytes([0xFE, 0x1E, 1, 0, 255, 0, state, 0xEF])]
+                            bytes([0xFE, 0x1E, 1, 0, 255, 0,
+                                   state if state <= 3 else 0, 0xEF])]
                 if state != RGBState.STATIC:
                     expected.append(bytes([0xFE, 0x33, 1, 0, 255, 0, state, 0xEF]))
                 self.assertEqual(self.client.writes, expected)
@@ -429,7 +438,7 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
             bytes.fromhex('FE 1E 01 FF 00 00 00 EF')])
 
     async def test_restore_reenables_saved_mk2_animation(self):
-        for state in (RGBState.BREATHE, RGBState.COLORFUL, RGBState.BREATHE_COLOR):
+        for state in list(RGBState)[1:]:
             with self.subTest(state=state):
                 self.client.writes.clear()
                 self.app.settings.rgb_color = (0, 0, 255)
@@ -437,8 +446,42 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
                 await self.app.apply_current_settings()
                 self.assertEqual(self.client.writes[-3:], [
                     bytes.fromhex('FE 33 00 00 00 00 00 EF'),
-                    bytes([0xFE, 0x1E, 1, 0, 0, 255, state, 0xEF]),
+                    bytes([0xFE, 0x1E, 1, 0, 0, 255, state if state <= 3 else 0, 0xEF]),
                     bytes([0xFE, 0x33, 1, 0, 0, 255, state, 0xEF])])
+
+    async def test_saved_mk2_effect_survives_mk1_fallback(self):
+        for state in list(RGBState)[4:]:
+            self.app.settings.rgb_state = state
+            self.app.device.connected_model = 'LCT21001'
+            self.client.writes.clear()
+            await self.app.apply_current_settings()
+            self.assertEqual(self.client.writes[-1], bytes.fromhex('FE 1E 01 FF 00 00 00 EF'))
+            self.assertNotIn(0x33, [p[1] for p in self.client.writes])
+            self.assertEqual(self.app.settings.rgb_state, state)
+            self.app.device.connected_model = 'LCT22002'
+            await self.app.apply_current_settings()
+            self.assertEqual(self.client.writes[-1], bytes([0xFE, 0x33, 1, 255, 0, 0, state, 0xEF]))
+
+    async def test_single_rgb_menu_effect_availability_and_color(self):
+        rgb = {item.text: item for item in self.app.handle_rgb_settings()}
+        modes = {item.text: item for item in rgb['Mode'].submenu}
+        self.assertEqual(list(modes), ['Static', 'Breathe', 'Rainbow', 'Breathe Rainbow',
+                                      'Spiral', 'Rotating Rainbow', 'Fast Color Wave'])
+        for state, label in ((RGBState.SPIRAL, 'Spiral'),
+                             (RGBState.ROTATING_RAINBOW, 'Rotating Rainbow'),
+                             (RGBState.FAST_COLOR_WAVE, 'Fast Color Wave')):
+            self.app.settings.rgb_state = state
+            self.app.device.connected_model = 'LCT22002'
+            self.assertTrue(modes[label].enabled)
+            self.assertTrue(modes[label].checked)
+            self.assertFalse(rgb['Color'].enabled)
+            self.app.device.connected_model = 'LCT21001'
+            self.assertFalse(modes[label].enabled)
+            self.assertFalse(modes[label].checked)
+            self.assertTrue(modes['Static'].checked)
+            self.assertTrue(rgb['Color'].enabled)
+        self.app.settings.rgb_state = RGBState.BREATHE
+        self.assertTrue(rgb['Color'].enabled)
 
     async def test_restore_attempts_other_outputs_after_failure(self):
         self.app.device.write_pump_mode = AsyncMock(side_effect=RuntimeError('pump failed'))

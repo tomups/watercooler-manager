@@ -60,12 +60,19 @@ while the pump is already running do not restart the grace period.
 Use **RGB** to control the visible lighting. Tests on LCT22002 firmware 2.0.0.4
 confirmed that `0x1E` controls the base lighting, while `0x33` activates effects
 on those same lights: selector `1` breathes in one color, `2` smoothly cycles
-colors, and `3` changes color between breaths. These are not independent zones.
+colors, and `3` changes color between breaths. Selectors `4`, `5`, and `6` provide
+Spiral, Rotating Rainbow, and Fast Color Wave. These are not independent zones.
+All effects appear in the single **RGB → Mode** menu. The three additional effects
+are available on Mk2 only and generate their own colors, so Color is disabled
+while one is selected.
 
 For Mk2 updates, the app disables the active effect, sets the base color with
 `0x1E`, and enables the requested animation with `0x33`. Static and OFF leave
 `0x33` disabled so the base setting is visible. The same sequence is used when
 restoring saved settings. Mk1 devices retain their `0x1E`-only lighting commands.
+The three additional effects use a static base (`0x1E` selector `0`). If a saved
+Mk2-only effect is restored on Mk1, the app uses Static without overwriting the
+saved effect. Switching back to Mk2 restores it.
 
 The experimental Fan RGB menu has been removed. Its old preferences are ignored
 and removed when settings are saved; existing RGB color, effect, and off settings

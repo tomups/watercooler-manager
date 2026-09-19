@@ -218,11 +218,19 @@ class WaterCoolingDevice:
         if self.connected_model == LCTDeviceModel.LCT22002:
             await self._command(Commands.MK2_RGB_EFFECT)
 
+    def supports_rgb_state(self, state: RGBState):
+        return not state.mk2_only or self.connected_model == LCTDeviceModel.LCT22002
+
     async def write_rgb(self, red: int, green: int, blue: int, state: RGBState):
-        if not all(0 <= x <= 255 for x in (red, green, blue)) or not 0 <= state <= 3:
+        state = RGBState(state)
+        if not all(0 <= x <= 255 for x in (red, green, blue)):
             raise ValueError("Parameters out of range")
+        if not self.supports_rgb_state(state):
+            raise ValueError("This lighting effect requires an Mk2 cooler")
         await self._disable_mk2_rgb_effect()
-        await self._command(Commands.RGB, 1, red, green, blue, state)
+        # Selectors 4–6 were verified only on the Mk2 effect command.
+        base_state = RGBState.STATIC if state.mk2_only else state
+        await self._command(Commands.RGB, 1, red, green, blue, base_state)
         if self.connected_model == LCTDeviceModel.LCT22002 and state != RGBState.STATIC:
             await self._command(Commands.MK2_RGB_EFFECT, 1, red, green, blue, state)
 

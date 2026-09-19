@@ -5,6 +5,13 @@ class RGBState(IntEnum):
     BREATHE = 0x01
     COLORFUL = 0x02
     BREATHE_COLOR = 0x03
+    SPIRAL = 0x04
+    ROTATING_RAINBOW = 0x05
+    FAST_COLOR_WAVE = 0x06
+
+    @property
+    def mk2_only(self):
+        return self >= RGBState.SPIRAL
 
 class PumpVoltage(IntEnum):
     V11 = 0x00

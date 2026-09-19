@@ -196,7 +196,12 @@ class WaterCoolerManager:
         if self.settings.rgb_is_off:
             await self.device.write_rgb_off()
         else:
-            await self.device.write_rgb(*self.settings.rgb_color, self.settings.rgb_state)
+            await self.device.write_rgb(*self.settings.rgb_color, self._effective_rgb_state())
+
+    def _effective_rgb_state(self):
+        state = self.settings.rgb_state
+        # Preserve the saved Mk2 effect when temporarily using an older cooler.
+        return state if self.device.supports_rgb_state(state) else RGBState.STATIC
 
     def _change_settings(self, **changes):
         async def apply():
@@ -294,7 +299,8 @@ class WaterCoolerManager:
             self._change_settings(**{'rgb_' + key: value for key, value in values.items()})
         def mode_item(label, mode):
             return pystray.MenuItem(label, lambda: change(state=mode, is_off=False),
-                checked=lambda _: not get('is_off') and get('state') == mode)
+                checked=lambda _: not get('is_off') and self._effective_rgb_state() == mode,
+                enabled=lambda _: self.device.supports_rgb_state(mode))
         def color_item(label, color):
             return pystray.MenuItem(label, lambda: change(color=color, is_off=False),
                 checked=lambda _: not get('is_off') and get('color') == color)
@@ -303,10 +309,14 @@ class WaterCoolerManager:
                             checked=lambda _: get('is_off')),
             pystray.MenuItem('Mode', pystray.Menu(
                 mode_item('Static', RGBState.STATIC), mode_item('Breathe', RGBState.BREATHE),
-                mode_item('Rainbow', RGBState.COLORFUL), mode_item('Breathe Rainbow', RGBState.BREATHE_COLOR))),
+                mode_item('Rainbow', RGBState.COLORFUL), mode_item('Breathe Rainbow', RGBState.BREATHE_COLOR),
+                mode_item('Spiral', RGBState.SPIRAL),
+                mode_item('Rotating Rainbow', RGBState.ROTATING_RAINBOW),
+                mode_item('Fast Color Wave', RGBState.FAST_COLOR_WAVE))),
             pystray.MenuItem('Color', pystray.Menu(
                 color_item('Red', (255, 0, 0)), color_item('Green', (0, 255, 0)),
-                color_item('Blue', (0, 0, 255)), color_item('White', (255, 255, 255)))))
+                color_item('Blue', (0, 0, 255)), color_item('White', (255, 255, 255))),
+                enabled=lambda _: not self._effective_rgb_state().mk2_only))
 
     def handle_autostart_settings(self):
         self.settings.set_autostart(not self.settings.auto_start)
