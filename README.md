@@ -19,6 +19,7 @@ Should work with:
 - RGB lighting controls:
   - On/Off toggle
   - Multiple modes: Static, Breathe, Rainbow, Breathe Rainbow
+  - Additional Mk2 effects: Spiral, Rotating Rainbow, Fast Color Wave
   - Color presets: Red, Green, Blue, White
 - Auto-start on boot (Windows only)
 - Auto-connect to the water cooler on startup
@@ -100,6 +101,9 @@ but showed no additional visible benefit over plain disconnect on the tested uni
 The `0x30` query returned only the firmware version during hardware testing, so
 it is not exposed as additional telemetry. Undecoded firmware-only configuration
 and storage commands are not exposed.
+On the tested unit, toggling `0x1D` produced no visible effect with normal RGB on
+or off, and toggling `0x1A` produced no observable change while cooling and lighting
+were active. Neither command is exposed as an app control.
 
 ## Development and verification
 
