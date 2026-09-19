@@ -19,7 +19,7 @@ class Commands:
     RGB = 0x1e
     METER_PUSH = 0x31
     QUERY_METER = 0x32
-    FAN_RGB = 0x33
+    MK2_LIGHTING_OVERRIDE = 0x33
     LINE_OFF = 0x38
 
 class NordicUART:

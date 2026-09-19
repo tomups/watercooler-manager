@@ -56,25 +56,42 @@ class DeviceTests(unittest.IsolatedAsyncioTestCase):
     async def test_packets_and_validation(self):
         await self.device.write_fan_mode(100)
         await self.device.write_pump_mode(100, PumpVoltage.V8)
-        await self.device.write_rgb(1, 2, 3, RGBState.BREATHE, fan=True)
-        await self.device.write_rgb_off(fan=True)
+        await self.device.write_rgb(1, 2, 3, RGBState.BREATHE)
+        await self.device.write_rgb_off()
         await self.device.query_meter()
         await self.device.write_sleep()
         await self.device.write_line_off()
         self.assertEqual(self.client.writes, [
             bytes.fromhex('FE 1B 01 64 00 00 00 EF'),
             bytes.fromhex('FE 1C 01 64 03 00 00 EF'),
-            bytes.fromhex('FE 33 01 01 02 03 01 EF'),
             bytes.fromhex('FE 33 00 00 00 00 00 EF'),
+            bytes.fromhex('FE 1E 01 01 02 03 01 EF'),
+            bytes.fromhex('FE 33 00 00 00 00 00 EF'),
+            bytes.fromhex('FE 1E 00 00 00 00 00 EF'),
             bytes.fromhex('FE 32 00 00 00 00 00 EF'),
             bytes.fromhex('FE 19 00 01 00 00 00 EF'),
             bytes.fromhex('FE 38 00 00 00 00 00 EF')])
         for value in (-1, 101, 255):
             with self.assertRaises(ValueError):
                 await self.device.write_fan_mode(value)
+
+    async def test_mk1_lighting_does_not_send_mk2_command(self):
         self.device.connected_model = 'LCT21001'
-        with self.assertRaises(ValueError):
-            await self.device.write_rgb_off(fan=True)
+        await self.device.write_rgb(0, 255, 0, RGBState.STATIC)
+        await self.device.write_rgb_off()
+        self.assertEqual(self.client.writes, [
+            bytes.fromhex('FE 1E 01 00 FF 00 00 EF'),
+            bytes.fromhex('FE 1E 00 00 00 00 00 EF')])
+
+    async def test_override_disable_failure_does_not_send_hidden_rgb_update(self):
+        self.client.write_gatt_char = AsyncMock(side_effect=RuntimeError('write failed'))
+        for operation in (lambda: self.device.write_rgb(255, 0, 0, RGBState.STATIC),
+                          self.device.write_rgb_off):
+            self.client.write_gatt_char.reset_mock()
+            with self.assertRaisesRegex(RuntimeError, 'write failed'):
+                await operation()
+            self.client.write_gatt_char.assert_awaited_once_with(
+                NordicUART.CHAR_TX, bytearray.fromhex('FE 33 00 00 00 00 00 EF'))
 
     async def test_flow_parsing_and_pump_off(self):
         notify = self.device._notification
@@ -259,25 +276,22 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
     async def test_restore_all_off_states(self):
         settings = self.app.settings
         settings.pump_is_off = settings.fan_is_off = settings.rgb_is_off = True
-        settings.fan_rgb_enabled = settings.fan_rgb_is_off = True
         await self.app.apply_current_settings()
         self.assertEqual(self.client.writes, [bytes.fromhex(p) for p in (
             'FE 1C 00 00 00 00 00 EF', 'FE 1B 00 00 00 00 00 EF',
-            'FE 1E 00 00 00 00 00 EF', 'FE 33 00 00 00 00 00 EF')])
+            'FE 33 00 00 00 00 00 EF', 'FE 1E 00 00 00 00 00 EF')])
 
-    async def test_fan_rgb_is_opt_in_and_mk2_only(self):
+    async def test_restore_disables_mk2_override_before_saved_rgb(self):
         await self.app.apply_current_settings()
-        self.assertNotIn(0x33, [p[1] for p in self.client.writes])
-        self.app.settings.fan_rgb_enabled = True
-        self.app.device.connected_model = 'LCT21001'
-        await self.app.apply_current_settings()
-        self.assertNotIn(0x33, [p[1] for p in self.client.writes])
+        self.assertEqual(self.client.writes[-2:], [
+            bytes.fromhex('FE 33 00 00 00 00 00 EF'),
+            bytes.fromhex('FE 1E 01 FF 00 00 00 EF')])
 
     async def test_restore_attempts_other_outputs_after_failure(self):
         self.app.device.write_pump_mode = AsyncMock(side_effect=RuntimeError('pump failed'))
         with self.assertRaisesRegex(RuntimeError, 'Could not restore'):
             await self.app.apply_current_settings()
-        self.assertEqual([p[1] for p in self.client.writes], [0x1B, 0x1E])
+        self.assertEqual([p[1] for p in self.client.writes], [0x1B, 0x33, 0x1E])
 
     async def test_fault_notifications_are_deduplicated(self):
         self.app.device.pump_running = True
@@ -305,17 +319,17 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.app.tray.priming)
         self.assertFalse(self.client.is_connected)
         commands = [p[1] for p in self.client.writes]
-        self.assertEqual(commands[-4:], [0x1C, 0x1B, 0x1E, 0x19])
+        self.assertEqual(commands[-5:], [0x1C, 0x1B, 0x33, 0x1E, 0x19])
 
     async def test_menus_construct_with_real_pystray(self):
         items = self.app.tray.create_menu()
-        self.assertIn('Fan RGB (Mk2)', [item.text for item in items])
-        self.app.tray.update_device_status('CoolingSystem FW V2', 'OK', True)
+        self.assertEqual([item.text for item in items if 'RGB' in item.text], ['RGB'])
+        self.app.tray.update_device_status('CoolingSystem FW V2', 'OK')
         self.app.tray.update_connection_status(True)
-        fan = next(item for item in self.app.tray.create_menu() if item.text == 'Fan RGB (Mk2)')
-        self.assertTrue(fan.enabled)
+        rgb = next(item for item in self.app.tray.create_menu() if item.text == 'RGB')
+        self.assertTrue(rgb.enabled)
         self.app.tray.priming = True
-        self.assertFalse(fan.enabled)
+        self.assertFalse(rgb.enabled)
 
     async def test_captured_firmware_response_reaches_tray_menu(self):
         self.app.device._notification(None, b'MCU F/W Version: 2.0.0.4')
@@ -361,35 +375,59 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SettingsTests(unittest.TestCase):
-    def test_json_round_trip_and_old_config_defaults(self):
+    def test_json_migrates_legacy_fan_rgb_without_changing_rgb(self):
         with patch.object(Settings, 'load'):
             settings = Settings()
             restored = Settings()
         with tempfile.TemporaryDirectory() as directory:
-            path = str(Path(directory) / 'settings.json')
-            settings.CONFIG_FILE = restored.CONFIG_FILE = path
-            settings.fan_rgb_enabled = True
-            settings.fan_rgb_color = (1, 2, 3)
-            settings.fan_rgb_state = RGBState.BREATHE
+            path = Path(directory) / 'settings.json'
+            settings.CONFIG_FILE = restored.CONFIG_FILE = str(path)
+            settings.rgb_color = (1, 2, 3)
+            settings.rgb_state = RGBState.BREATHE
+            settings.rgb_is_off = True
             settings._save_to_file()
+            config = json.loads(path.read_text())
+            config['fan_rgb'] = dict(enabled=True, off=False, color=[255, 0, 0], state=1)
+            path.write_text(json.dumps(config))
             restored._load_from_file()
-            self.assertEqual(restored._fan_rgb_config(), settings._fan_rgb_config())
-            config = json.loads(Path(path).read_text())
-            del config['fan_rgb']
-            Path(path).write_text(json.dumps(config))
-            with patch.object(Settings, 'load'):
-                old = Settings()
-            old.CONFIG_FILE = path
-            old._load_from_file()
-            self.assertFalse(old.fan_rgb_enabled)
-            self.assertEqual(old.current_voltage, settings.current_voltage)
+            self.assertEqual(restored.rgb_color, (1, 2, 3))
+            self.assertEqual(restored.rgb_state, RGBState.BREATHE)
+            self.assertTrue(restored.rgb_is_off)
+            self.assertFalse(hasattr(restored, 'fan_rgb_enabled'))
+            restored._save_to_file()
+            self.assertNotIn('fan_rgb', json.loads(path.read_text()))
 
-    def test_invalid_fan_settings_do_not_partially_apply(self):
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows registry storage')
+    def test_registry_removes_legacy_fan_rgb_when_saving(self):
         with patch.object(Settings, 'load'):
             settings = Settings()
-        with self.assertRaises(ValueError):
-            settings._load_fan_rgb(dict(enabled=True, color=[256, 0, 0]))
-        self.assertFalse(settings.fan_rgb_enabled)
+        import winreg
+        values = dict(current_voltage=2, current_fan_speed=50, pump_is_off=0,
+                      fan_is_off=0, rgb_state=1, rgb_is_off=1, rgb_color=bytes([1, 2, 3]),
+                      auto_start=0, auto_connect=0,
+                      fan_rgb='{"enabled": true, "off": false, "state": 1}')
+        def query(key, name):
+            return values[name], 0
+        def write(key, name, reserved, kind, value):
+            values[name] = value
+        def delete(key, name):
+            if name not in values:
+                raise FileNotFoundError(name)
+            del values[name]
+        with patch.object(winreg, 'CreateKey'), patch.object(winreg, 'CloseKey'), \
+                patch.object(winreg, 'QueryValueEx', side_effect=query), \
+                patch.object(winreg, 'SetValueEx', side_effect=write), \
+                patch.object(winreg, 'DeleteValue', side_effect=delete):
+            settings._load_from_registry()
+            self.assertEqual(settings.rgb_color, (1, 2, 3))
+            self.assertTrue(settings.rgb_is_off)
+            self.assertFalse(hasattr(settings, 'fan_rgb_enabled'))
+            settings._save_to_registry()
+            self.assertNotIn('fan_rgb', values)
+            self.assertEqual(values['rgb_color'], bytes([1, 2, 3]))
+            self.assertEqual(values['rgb_state'], 1)
+            self.assertEqual(values['rgb_is_off'], 1)
+            settings._save_to_registry()  # Missing obsolete value is harmless.
 
 
 if __name__ == '__main__':

@@ -33,7 +33,6 @@ class WaterCoolerManager:
             on_exit=self.exit_app,
             settings=self.settings,
             version=version if version is not None else "v1.0.0",
-            on_fan_rgb_settings=lambda: self.handle_rgb_settings(fan=True),
             on_priming=lambda: self._submit(self.start_priming()),
             on_cancel_priming=lambda: self._submit(self.cancel_priming()),
         )
@@ -98,7 +97,7 @@ class WaterCoolerManager:
 
     def _device_status(self):
         self.tray.update_device_status(self.device.firmware_version,
-                                     self.device.flow_status, self.device.supports_fan_rgb)
+                                     self.device.flow_status)
         if self.device.flow_status == "OK" or not self.device.pump_running:
             self._fault_reported = False
         if (self.device.flow_status == "fault" and not self._fault_reported
@@ -150,10 +149,8 @@ class WaterCoolerManager:
                 lambda: self.device.write_pump_mode(pump_voltage=self.settings.current_voltage),
             self.device.write_fan_off if self.settings.fan_is_off else
                 lambda: self.device.write_fan_mode(self.settings.current_fan_speed),
-            lambda: self._apply_rgb(False),
+            self._apply_rgb,
         ]
-        if self.device.supports_fan_rgb and self.settings.fan_rgb_enabled:
-            operations.append(lambda: self._apply_rgb(True))
         errors = []
         for operation in operations:
             try:
@@ -163,13 +160,11 @@ class WaterCoolerManager:
         if errors:
             raise RuntimeError(f"Could not restore all settings: {errors[0]}")
 
-    async def _apply_rgb(self, fan):
-        prefix = "fan_rgb" if fan else "rgb"
-        if getattr(self.settings, prefix + "_is_off"):
-            await self.device.write_rgb_off(fan=fan)
+    async def _apply_rgb(self):
+        if self.settings.rgb_is_off:
+            await self.device.write_rgb_off()
         else:
-            await self.device.write_rgb(*getattr(self.settings, prefix + "_color"),
-                                        getattr(self.settings, prefix + "_state"), fan=fan)
+            await self.device.write_rgb(*self.settings.rgb_color, self.settings.rgb_state)
 
     def _change_settings(self, **changes):
         async def apply():
@@ -233,10 +228,9 @@ class WaterCoolerManager:
             pystray.MenuItem('Turn on High Mode', preset(PumpVoltage.V11, 90, (255, 0, 0)),
                              checked=selected(PumpVoltage.V11, 90, (255, 0, 0))),
             pystray.MenuItem('Turn off Mode', lambda: self._change_settings(
-                pump_is_off=True, fan_is_off=True, rgb_is_off=True, fan_rgb_is_off=True),
+                pump_is_off=True, fan_is_off=True, rgb_is_off=True),
                 checked=lambda _: self.settings.pump_is_off and self.settings.fan_is_off
-                    and self.settings.rgb_is_off and (not self.settings.fan_rgb_enabled
-                    or self.settings.fan_rgb_is_off)))
+                    and self.settings.rgb_is_off))
 
     def handle_pump_settings(self):
         def voltage_item(label, voltage):
@@ -261,35 +255,26 @@ class WaterCoolerManager:
                 fan_is_off=not self.settings.fan_is_off), checked=lambda _: self.settings.fan_is_off),
             pystray.MenuItem('Speed', pystray.Menu(*(speed_item(s) for s in (25, 50, 75, 90)))))
 
-    def handle_rgb_settings(self, fan=False):
-        prefix = 'fan_rgb' if fan else 'rgb'
+    def handle_rgb_settings(self):
         def get(field):
-            return getattr(self.settings, prefix + '_' + field)
+            return getattr(self.settings, 'rgb_' + field)
         def change(**values):
-            self._change_settings(**{prefix + '_' + key: value for key, value in values.items()})
+            self._change_settings(**{'rgb_' + key: value for key, value in values.items()})
         def mode_item(label, mode):
             return pystray.MenuItem(label, lambda: change(state=mode, is_off=False),
                 checked=lambda _: not get('is_off') and get('state') == mode)
         def color_item(label, color):
             return pystray.MenuItem(label, lambda: change(color=color, is_off=False),
                 checked=lambda _: not get('is_off') and get('color') == color)
-        items = []
-        if fan:
-            items.append(pystray.MenuItem('Enable fan lighting control (experimental)',
-                lambda: change(enabled=not get('enabled')), checked=lambda _: get('enabled')))
-        items.extend([
+        return pystray.Menu(
             pystray.MenuItem('Turn Off', lambda: change(is_off=not get('is_off')),
-                            checked=lambda _: get('is_off'),
-                            enabled=lambda _: not fan or get('enabled')),
+                            checked=lambda _: get('is_off')),
             pystray.MenuItem('Mode', pystray.Menu(
                 mode_item('Static', RGBState.STATIC), mode_item('Breathe', RGBState.BREATHE),
-                mode_item('Rainbow', RGBState.COLORFUL), mode_item('Breathe Rainbow', RGBState.BREATHE_COLOR)),
-                enabled=lambda _: not fan or get('enabled')),
+                mode_item('Rainbow', RGBState.COLORFUL), mode_item('Breathe Rainbow', RGBState.BREATHE_COLOR))),
             pystray.MenuItem('Color', pystray.Menu(
                 color_item('Red', (255, 0, 0)), color_item('Green', (0, 255, 0)),
-                color_item('Blue', (0, 0, 255)), color_item('White', (255, 255, 255))),
-                enabled=lambda _: not fan or get('enabled'))])
-        return pystray.Menu(*items)
+                color_item('Blue', (0, 0, 255)), color_item('White', (255, 255, 255)))))
 
     def handle_autostart_settings(self):
         self.settings.set_autostart(not self.settings.auto_start)

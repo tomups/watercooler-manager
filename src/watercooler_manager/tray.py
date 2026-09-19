@@ -11,7 +11,7 @@ class SystemTrayIcon:
     def __init__(self, on_connect: Callable, on_disconnect: Callable, on_mode_settings: Callable,
                  on_pump_settings: Callable, on_fan_settings: Callable,
                  on_rgb_settings: Callable, on_autostart_settings: Callable, on_autoconnect_settings: Callable, on_exit: Callable, settings, version: str = APP_VERSION,
-                 on_fan_rgb_settings=None, on_priming=None, on_cancel_priming=None):
+                 on_priming=None, on_cancel_priming=None):
         self.icon = None
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect
@@ -25,7 +25,6 @@ class SystemTrayIcon:
         self.connected = False
         self.settings = settings
         self.version = version
-        self.on_fan_rgb_settings = on_fan_rgb_settings
         self.on_priming = on_priming
         self.on_cancel_priming = on_cancel_priming
         self.busy = False
@@ -33,7 +32,6 @@ class SystemTrayIcon:
         self.priming_cycle = 0
         self.firmware_version = None
         self.flow_status = "unknown"
-        self.supports_fan_rgb = False
 
     def create_icon_image(self, connected: bool = False):
         icon_dir = os.path.join(os.path.dirname(__file__), "..", "icons")
@@ -58,10 +56,7 @@ class SystemTrayIcon:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('Pump', self.on_pump_settings(), enabled=lambda _: not self.priming and not self.busy),
             pystray.MenuItem('Fan', self.on_fan_settings(), enabled=lambda _: not self.priming and not self.busy),
-            pystray.MenuItem('Head RGB', self.on_rgb_settings(), enabled=lambda _: not self.priming and not self.busy),
-            pystray.MenuItem('Fan RGB (Mk2)', self.on_fan_rgb_settings() if self.on_fan_rgb_settings else None,
-                            enabled=lambda _: self.connected and self.supports_fan_rgb
-                            and not self.priming and not self.busy),
+            pystray.MenuItem('RGB', self.on_rgb_settings(), enabled=lambda _: not self.priming and not self.busy),
             pystray.MenuItem('Water filling', pystray.Menu(
                 pystray.MenuItem('Fill reservoir and attach hoses before starting', None, enabled=False),
                 pystray.MenuItem('Start filling (~68 seconds)', self.on_priming,
@@ -103,10 +98,9 @@ class SystemTrayIcon:
             self.icon.title = f"Water Cooler Manager - Flow: {self.flow_status}"
             self.icon.update_menu()
 
-    def update_device_status(self, firmware_version, flow_status, supports_fan_rgb):
+    def update_device_status(self, firmware_version, flow_status):
         self.firmware_version = firmware_version
         self.flow_status = flow_status
-        self.supports_fan_rgb = supports_fan_rgb
         self.refresh()
 
     def update_priming_progress(self, cycle):

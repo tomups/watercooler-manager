@@ -28,10 +28,6 @@ class WaterCoolingDevice:
         self._loop = None
         self._closing = False
 
-    @property
-    def supports_fan_rgb(self):
-        return self.connected_model == LCTDeviceModel.LCT22002
-
     def _set_flow(self, status):
         if self.flow_status != status:
             self.flow_status = status
@@ -181,18 +177,21 @@ class WaterCoolingDevice:
     async def _command(self, command, enabled=0, p1=0, p2=0, p3=0, p4=0):
         await self.write_buffer(bytearray([0xFE, command, enabled, p1, p2, p3, p4, 0xEF]))
 
-    async def write_rgb(self, red: int, green: int, blue: int, state: RGBState, fan=False):
-        if fan and not self.supports_fan_rgb:
-            raise ValueError("Fan lighting requires LCT22002")
+    async def _disable_mk2_lighting_override(self):
+        # On tested Mk2 firmware, enabling 0x33 holds the visible lighting state
+        # and hides subsequent 0x1E updates until 0x33 is disabled.
+        if self.connected_model == LCTDeviceModel.LCT22002:
+            await self._command(Commands.MK2_LIGHTING_OVERRIDE)
+
+    async def write_rgb(self, red: int, green: int, blue: int, state: RGBState):
         if not all(0 <= x <= 255 for x in (red, green, blue)) or not 0 <= state <= 3:
             raise ValueError("Parameters out of range")
-        await self._command(Commands.FAN_RGB if fan else Commands.RGB,
-                            1, red, green, blue, state)
+        await self._disable_mk2_lighting_override()
+        await self._command(Commands.RGB, 1, red, green, blue, state)
 
-    async def write_rgb_off(self, fan=False):
-        if fan and not self.supports_fan_rgb:
-            raise ValueError("Fan lighting requires LCT22002")
-        await self._command(Commands.FAN_RGB if fan else Commands.RGB)
+    async def write_rgb_off(self):
+        await self._disable_mk2_lighting_override()
+        await self._command(Commands.RGB)
 
     async def write_fan_mode(self, duty_cycle_percent: int):
         if not 0 <= duty_cycle_percent <= 100:

@@ -25,7 +25,7 @@ Should work with:
 - Flow status (unknown / OK / fault), with fault notifications while the pump is running
 - Firmware version diagnostics and explicit feedback when the firmware query times out
 - Restore saved pump, fan, and lighting on/off states when connecting
-- Separate, opt-in fan lighting controls for LCT22002 (Mk2)
+- One RGB control, with automatic recovery from the Mk2 lighting override
 - Cancellable water filling sequence, with progress and restoration of saved settings
 
 ## Usage
@@ -50,11 +50,16 @@ times out. The app accepts device pushes and also queries the meter periodically
 Flow faults trigger a notification; the app does not change GPU settings or shut
 down the computer. Reported flow is a device status, not a measured flow rate.
 
-On Mk2 devices, open **Fan RGB (Mk2)** and enable experimental fan lighting control.
-Its color, mode, and off state are saved independently from **Head RGB**. This uses
-the OEM host's mode encoding; behavior may differ across firmware versions.
-Disabling control stops sending fan lighting commands and leaves the current
-lighting in place. Mk1 devices never receive these commands.
+Use **RGB** to control the visible lighting. On the tested LCT22002 firmware
+2.0.0.4, enabling command `0x33` with selector `1` held the visible lighting state:
+subsequent `0x1E` color and off commands only became visible after disabling
+`0x33`. It did not behave as an independent lighting zone. The app therefore
+sends `0x33` OFF before each Mk2 RGB update, including saved-state restoration
+and turning lights off. Mk1 devices receive only `0x1E` lighting commands.
+
+The experimental Fan RGB menu has been removed. Its old preferences are ignored
+and removed when settings are saved; existing RGB color, effect, and off settings
+are preserved.
 
 For filling, attach the hoses and fill the reservoir first. Choose **Water filling →
 Start filling**. The sequence takes about 68 seconds and shows the current cycle.
@@ -118,7 +123,7 @@ status, command limits, saved-state restoration, Mk2 gating, and filling cleanup
 
 Before releasing, check on both cooler models: firmware reporting, flow status
 with the pump on/off, connection loss and reconnect, all saved off states, and
-filling completion/cancellation. Check Mk2 fan lighting modes separately. Line-off
+filling completion/cancellation. Check Mk2 RGB changes and off after reconnect. Line-off
 behavior remains unverified and must be tested before changing the disconnect policy.
 
 Protocol reference: [Chocapikk's Uniwill BLE reverse-engineering notes](https://gist.github.com/Chocapikk/0baa8e68b87f8ed0873c39504184ebc6).
