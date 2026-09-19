@@ -123,6 +123,12 @@ behavior remains unverified and must be tested before changing the disconnect po
 
 Protocol reference: [Chocapikk's Uniwill BLE reverse-engineering notes](https://gist.github.com/Chocapikk/0baa8e68b87f8ed0873c39504184ebc6).
 
+Live LCT22002 testing with firmware 2.0.0.4 showed two differences from the reference
+examples: firmware replies use `MCU F/W Version: 2.0.0.4`, and meter notifications
+use compact five-byte frames (for example, `FE 32 05 01 EF`). The parser accepts
+these observed formats as well as the documented firmware prefix and padded
+eight-byte meter frames. Regression tests include the captured responses.
+
 
 ## Thanks
 

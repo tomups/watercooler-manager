@@ -116,6 +116,44 @@ class DeviceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.client.events[:2], [('notify', NordicUART.CHAR_RX), ('write', b'sw')])
         self.assertEqual(self.device.firmware_version, 'CoolingSystem FW V2.0.0.4')
 
+    async def test_lct22002_captured_firmware_response(self):
+        # Captured from an LCT22002 running firmware 2.0.0.4.
+        await self.connect_fake(b'MCU F/W Version: 2.0.0.4')
+        self.assertEqual(self.device.firmware_version, 'MCU F/W Version: 2.0.0.4')
+        self.assertTrue(self.device._firmware_received.is_set())
+
+    async def test_lct22002_captured_compact_meter_responses(self):
+        await self.device.write_pump_mode()
+        for packet, expected in (
+            ('FE 31 05 02 EF', 'OK'),
+            ('FE 31 05 01 EF', 'fault'),
+            ('FE 32 05 02 EF', 'OK'),
+            ('FE 32 05 01 EF', 'fault'),
+        ):
+            with self.subTest(packet=packet):
+                self.device._meter_received.clear()
+                self.device._notification(None, bytes.fromhex(packet))
+                self.assertEqual(self.device.flow_status, expected)
+                self.assertTrue(self.device._meter_received.is_set())
+        await self.device.write_pump_off()
+        self.device._notification(None, bytes.fromhex('FE 32 05 01 EF'))
+        self.assertEqual(self.device.flow_status, 'unknown')
+
+    async def test_malformed_compact_responses_and_firmware_are_ignored(self):
+        self.device.pump_running = True
+        for data in (
+            bytes.fromhex('FE 31 05 02 00'),
+            bytes.fromhex('FE 33 05 02 EF'),
+            bytes.fromhex('FE 31 05 EF'),
+            bytes.fromhex('FE 31 05 02 00 EF'),
+            b'MCU F/W Version: ', b'MCU F/W Version: telemetry',
+            b'MCU F/W Version: 2.0.0.4\x01',
+        ):
+            self.device._notification(None, data)
+        self.assertEqual(self.device.flow_status, 'unknown')
+        self.assertFalse(self.device._meter_received.is_set())
+        self.assertIsNone(self.device.firmware_version)
+
     async def test_firmware_timeout_preserves_control(self):
         await self.connect_fake(None)
         self.assertIsNone(self.device.firmware_version)
@@ -278,6 +316,11 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(fan.enabled)
         self.app.tray.priming = True
         self.assertFalse(fan.enabled)
+
+    async def test_captured_firmware_response_reaches_tray_menu(self):
+        self.app.device._notification(None, b'MCU F/W Version: 2.0.0.4')
+        self.assertIn('Firmware: MCU F/W Version: 2.0.0.4',
+                      [item.text for item in self.app.tray.create_menu()])
 
     async def test_repeated_cancel_does_not_interrupt_restoration(self):
         started = asyncio.Event()

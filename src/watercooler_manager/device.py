@@ -1,4 +1,5 @@
 import asyncio
+import re
 from contextlib import suppress
 from typing import Optional, List
 
@@ -61,7 +62,8 @@ class WaterCoolingDevice:
         if not data:
             return
         if data[0] == 0xFE:
-            if (len(data) != 8 or data[-1] != 0xEF or
+            # Hardware uses compact 5-byte frames; the documented padded form is 8.
+            if (len(data) not in (5, 8) or data[-1] != 0xEF or
                     data[1] not in (Commands.METER_PUSH, Commands.QUERY_METER)):
                 return
             self._meter_received.set()
@@ -73,9 +75,8 @@ class WaterCoolingDevice:
             version = bytes(data).decode("utf-8").strip("\x00\r\n ")
         except UnicodeDecodeError:
             return
-        if not version.startswith("CoolingSystem FW V") or not version.isprintable():
-            return
-        if len(version) <= len("CoolingSystem FW V"):
+        # The gist's example prefix differs from the actual LCT22002 response.
+        if not re.fullmatch(r"(?:CoolingSystem FW V|MCU F/W Version: )\d+(?:\.\d+)+", version):
             return
         self.firmware_version = version
         self._firmware_received.set()
