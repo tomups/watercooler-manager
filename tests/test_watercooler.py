@@ -527,6 +527,21 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
         self.app.tray.priming = True
         self.assertFalse(rgb.enabled)
 
+    async def test_tray_click_after_menu_refresh(self):
+        from pystray._base import Icon
+
+        # Exercise pystray's real menu setter and click dispatch without a
+        # native tray window. Construction accepts tuples; assignment does not.
+        icon = Icon('test', menu=self.app.tray.create_menu())
+        icon.update_menu = Mock()
+        self.app.tray.icon = icon
+        icon()
+        for flow in ('starting', 'OK', 'fault'):
+            self.app.tray.update_device_status('MCU F/W Version: 2.0.0.4', flow)
+            icon()
+            self.assertIn(f'Flow: {flow}', [item.text for item in icon.menu])
+        self.assertEqual(self.client.writes, [])
+
     async def test_captured_firmware_response_reaches_tray_menu(self):
         self.app.device._notification(None, b'MCU F/W Version: 2.0.0.4')
         self.assertIn('Firmware: MCU F/W Version: 2.0.0.4',

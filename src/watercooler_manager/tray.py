@@ -45,7 +45,7 @@ class SystemTrayIcon:
         def open_releases(icon, item):
             webbrowser.open("https://github.com/tomups/watercooler-manager/releases/")
 
-        return (
+        return pystray.Menu(
             pystray.MenuItem('Disconnect' if self.connected else 'Connect',
                            self.on_disconnect if self.connected else self.on_connect,
                            enabled=lambda _: not self.busy),
