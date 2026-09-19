@@ -25,7 +25,7 @@ Should work with:
 - Flow status (unknown / OK / fault), with fault notifications while the pump is running
 - Firmware version diagnostics and explicit feedback when the firmware query times out
 - Restore saved pump, fan, and lighting on/off states when connecting
-- One RGB control, with automatic recovery from the Mk2 lighting override
+- One RGB control for static colors and Mk2 lighting effects
 - Cancellable water filling sequence, with progress and restoration of saved settings
 
 ## Usage
@@ -50,12 +50,15 @@ times out. The app accepts device pushes and also queries the meter periodically
 Flow faults trigger a notification; the app does not change GPU settings or shut
 down the computer. Reported flow is a device status, not a measured flow rate.
 
-Use **RGB** to control the visible lighting. On the tested LCT22002 firmware
-2.0.0.4, enabling command `0x33` with selector `1` held the visible lighting state:
-subsequent `0x1E` color and off commands only became visible after disabling
-`0x33`. It did not behave as an independent lighting zone. The app therefore
-sends `0x33` OFF before each Mk2 RGB update, including saved-state restoration
-and turning lights off. Mk1 devices receive only `0x1E` lighting commands.
+Use **RGB** to control the visible lighting. Tests on LCT22002 firmware 2.0.0.4
+confirmed that `0x1E` controls the base lighting, while `0x33` activates effects
+on those same lights: selector `1` breathes in one color, `2` smoothly cycles
+colors, and `3` changes color between breaths. These are not independent zones.
+
+For Mk2 updates, the app disables the active effect, sets the base color with
+`0x1E`, and enables the requested animation with `0x33`. Static and OFF leave
+`0x33` disabled so the base setting is visible. The same sequence is used when
+restoring saved settings. Mk1 devices retain their `0x1E`-only lighting commands.
 
 The experimental Fan RGB menu has been removed. Its old preferences are ignored
 and removed when settings are saved; existing RGB color, effect, and off settings

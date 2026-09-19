@@ -66,6 +66,7 @@ class DeviceTests(unittest.IsolatedAsyncioTestCase):
             bytes.fromhex('FE 1C 01 64 03 00 00 EF'),
             bytes.fromhex('FE 33 00 00 00 00 00 EF'),
             bytes.fromhex('FE 1E 01 01 02 03 01 EF'),
+            bytes.fromhex('FE 33 01 01 02 03 01 EF'),
             bytes.fromhex('FE 33 00 00 00 00 00 EF'),
             bytes.fromhex('FE 1E 00 00 00 00 00 EF'),
             bytes.fromhex('FE 32 00 00 00 00 00 EF'),
@@ -77,11 +78,32 @@ class DeviceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_mk1_lighting_does_not_send_mk2_command(self):
         self.device.connected_model = 'LCT21001'
-        await self.device.write_rgb(0, 255, 0, RGBState.STATIC)
+        for state in RGBState:
+            await self.device.write_rgb(0, 255, 0, state)
         await self.device.write_rgb_off()
-        self.assertEqual(self.client.writes, [
-            bytes.fromhex('FE 1E 01 00 FF 00 00 EF'),
-            bytes.fromhex('FE 1E 00 00 00 00 00 EF')])
+        self.assertEqual(self.client.writes, [bytes([0xFE, 0x1E, 1, 0, 255, 0, state, 0xEF])
+                                             for state in RGBState] +
+                         [bytes.fromhex('FE 1E 00 00 00 00 00 EF')])
+
+    async def test_mk2_modes_use_hardware_verified_effect_commands(self):
+        for state in RGBState:
+            with self.subTest(state=state):
+                self.client.writes.clear()
+                await self.device.write_rgb(0, 255, 0, state)
+                expected = [bytes.fromhex('FE 33 00 00 00 00 00 EF'),
+                            bytes([0xFE, 0x1E, 1, 0, 255, 0, state, 0xEF])]
+                if state != RGBState.STATIC:
+                    expected.append(bytes([0xFE, 0x33, 1, 0, 255, 0, state, 0xEF]))
+                self.assertEqual(self.client.writes, expected)
+
+    async def test_mk2_effect_to_static_and_off_clears_animation(self):
+        await self.device.write_rgb(0, 0, 255, RGBState.COLORFUL)
+        self.client.writes.clear()
+        await self.device.write_rgb(255, 0, 0, RGBState.STATIC)
+        await self.device.write_rgb_off()
+        self.assertEqual(self.client.writes, [bytes.fromhex(packet) for packet in (
+            'FE 33 00 00 00 00 00 EF', 'FE 1E 01 FF 00 00 00 EF',
+            'FE 33 00 00 00 00 00 EF', 'FE 1E 00 00 00 00 00 EF')])
 
     async def test_override_disable_failure_does_not_send_hidden_rgb_update(self):
         self.client.write_gatt_char = AsyncMock(side_effect=RuntimeError('write failed'))
@@ -286,6 +308,18 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.client.writes[-2:], [
             bytes.fromhex('FE 33 00 00 00 00 00 EF'),
             bytes.fromhex('FE 1E 01 FF 00 00 00 EF')])
+
+    async def test_restore_reenables_saved_mk2_animation(self):
+        for state in (RGBState.BREATHE, RGBState.COLORFUL, RGBState.BREATHE_COLOR):
+            with self.subTest(state=state):
+                self.client.writes.clear()
+                self.app.settings.rgb_color = (0, 0, 255)
+                self.app.settings.rgb_state = state
+                await self.app.apply_current_settings()
+                self.assertEqual(self.client.writes[-3:], [
+                    bytes.fromhex('FE 33 00 00 00 00 00 EF'),
+                    bytes([0xFE, 0x1E, 1, 0, 0, 255, state, 0xEF]),
+                    bytes([0xFE, 0x33, 1, 0, 0, 255, state, 0xEF])])
 
     async def test_restore_attempts_other_outputs_after_failure(self):
         self.app.device.write_pump_mode = AsyncMock(side_effect=RuntimeError('pump failed'))
