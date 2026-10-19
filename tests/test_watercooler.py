@@ -549,8 +549,9 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
         started = asyncio.Event()
         self.app.tray.update_priming_progress = lambda _: started.set()
         await self.app.start_priming()
-        await started.wait()
-        await self.app.disconnect()
+        async with asyncio.timeout(1):
+            await started.wait()
+            await self.app.disconnect()
         self.assertFalse(self.app.tray.priming)
         self.assertFalse(self.client.is_connected)
         commands = [p[1] for p in self.client.writes]
