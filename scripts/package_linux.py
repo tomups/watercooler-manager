@@ -1,4 +1,4 @@
-"""Package the EL9 frozen application. See packaging/README.md for prerequisites."""
+"""Package the EL9 frozen application for Linux distributions and desktops."""
 
 import argparse
 import hashlib
@@ -81,7 +81,6 @@ def desktop_files(prefix):
          prefix / f'share/icons/hicolor/512x512/apps/{APP_ID}.png')
     copy(ROOT / 'LICENSE', prefix / 'share/licenses/watercooler-manager/LICENSE')
     copy(ROOT / 'README.md', prefix / 'share/doc/watercooler-manager/README.md')
-    copy(ROOT / 'packaging/README.md', prefix / 'share/doc/watercooler-manager/packaging/README.md')
 
 
 def stage(payload):
