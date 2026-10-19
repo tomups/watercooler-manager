@@ -2,7 +2,7 @@
 
 Utility to manage LCT21001 / LCT22002 laptop water coolers
 
-Control compatible laptop water coolers your Windows or Linux system tray without having to use the original control panel software. 
+Control compatible laptop water coolers from your Windows or Linux system tray without having to use the original control panel software. 
 
 ![Water Cooler Manager system tray menu](https://github.com/user-attachments/assets/d9b69dd2-7aa6-4dce-97bc-4bb408dd60b8)
 ![Water Cooler Manager windows system tray menu](https://github.com/user-attachments/assets/606967b7-d3c1-4f1e-9d31-80ed5aebcd39
