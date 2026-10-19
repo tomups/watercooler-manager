@@ -176,7 +176,11 @@ jobs:
           systemctl --user start dbus.service
           printf '#!/bin/sh\nexec snap run watercooler-manager "$@"\n' > build-run-snap
           chmod +x build-run-snap
-          xvfb-run -a python3 tests/smoke_linux_tray.py --virtual-host --executable build-run-snap --exit-via-menu
+          # Start inside the user manager's delegated cgroup, rather than the
+          # Actions agent's system service, so snap-confine can track the app.
+          systemd-run --user --wait --pipe --collect --service-type=exec \
+            --working-directory="$PWD" --setenv=XDG_RUNTIME_DIR --setenv=DBUS_SESSION_BUS_ADDRESS \
+            xvfb-run -a python3 tests/smoke_linux_tray.py --virtual-host --executable build-run-snap --exit-via-menu
 
   nix:
     runs-on: ubuntu-24.04

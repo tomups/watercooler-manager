@@ -123,8 +123,8 @@ def native():
         ],
         'overrides': {
             'deb': {'depends': ['bluez', 'libc6 (>= 2.34)', 'libgcc-s1']},
-            'rpm': {'depends': ['bluez', 'glibc >= 2.34', 'libgcc']},
-            'archlinux': {'depends': ['bluez', 'glibc', 'gcc-libs']},
+            'rpm': {'depends': ['bluez', 'glibc >= 2.34', 'libgcc_s.so.1()(64bit)']},
+            'archlinux': {'depends': ['bluez', 'glibc', 'libgcc_s.so=1-64']},
         },
     }
     config_path = BUILD / 'nfpm.json'
@@ -144,7 +144,7 @@ pkgdesc='System tray controls for Bluetooth laptop water coolers'
 arch=('x86_64')
 url='https://github.com/tomups/watercooler-manager'
 license=('GPL-3.0-only')
-depends=('bluez' 'glibc' 'gcc-libs')
+depends=('bluez' 'glibc' 'libgcc_s.so=1-64')
 provides=('watercooler-manager')
 conflicts=('watercooler-manager')
 options=('!strip')
