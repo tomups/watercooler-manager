@@ -359,6 +359,45 @@ class AppTests(unittest.IsolatedAsyncioTestCase):
         await self.app.cancel_priming()
         self.app.loop.close()
 
+    async def click_preset(self, label):
+        tasks = []
+        self.app._submit = lambda coro: tasks.append(asyncio.create_task(coro))
+        item = next(item for item in self.app.handle_on_mode_settings() if item.text == label)
+        item(None)
+        await asyncio.gather(*tasks)
+
+    async def test_cooling_presets_keep_rgb_off(self):
+        self.app.settings.rgb_is_off = True
+        self.app.settings.rgb_color = (255, 255, 255)
+        for label, voltage, speed in (
+                ('Turn on High Mode', PumpVoltage.V11, 90),
+                ('Turn on Med Mode', PumpVoltage.V8, 50),
+                ('Turn on Low Mode', PumpVoltage.V7, 25)):
+            with self.subTest(preset=label):
+                self.client.writes.clear()
+                await self.click_preset(label)
+                self.assertTrue(self.app.settings.rgb_is_off)
+                self.assertFalse(self.app.settings.pump_is_off)
+                self.assertFalse(self.app.settings.fan_is_off)
+                self.assertEqual(self.app.settings.current_voltage, voltage)
+                self.assertEqual(self.app.settings.current_fan_speed, speed)
+                self.assertEqual([tuple(packet[1:3]) for packet in self.client.writes],
+                                 [(0x1c, 1), (0x1b, 1), (0x33, 0), (0x1e, 0)])
+                self.assertTrue(next(item for item in self.app.handle_on_mode_settings()
+                                     if item.text == label).checked)
+
+    async def test_cooling_presets_still_apply_colors_when_rgb_is_on(self):
+        for label, color in (('Turn on High Mode', (255, 0, 0)),
+                             ('Turn on Med Mode', (0, 0, 255)),
+                             ('Turn on Low Mode', (0, 255, 0))):
+            with self.subTest(preset=label):
+                self.client.writes.clear()
+                await self.click_preset(label)
+                self.assertFalse(self.app.settings.rgb_is_off)
+                self.assertEqual(self.app.settings.rgb_color, color)
+                self.assertEqual(self.client.writes[-1],
+                                 bytes([0xfe, 0x1e, 1, *color, RGBState.STATIC, 0xef]))
+
     async def test_standby_preserves_settings_and_resume_restores_effects(self):
         self.app.settings.rgb_state = RGBState.COLORFUL
         self.app.settings.rgb_color = (0, 0, 255)

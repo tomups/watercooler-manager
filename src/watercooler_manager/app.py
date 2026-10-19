@@ -2,10 +2,9 @@ import asyncio
 import threading
 from contextlib import suppress
 
-import pystray
 from .device import WaterCoolingDevice
 from .settings import Settings
-from .tray import SystemTrayIcon
+from .tray import SystemTrayIcon, pystray
 from .enums import PumpVoltage, RGBState
 
 
@@ -32,7 +31,7 @@ class WaterCoolerManager:
             on_autoconnect_settings=self.handle_autoconnect_settings,
             on_exit=self.exit_app,
             settings=self.settings,
-            version=version if version is not None else "v1.3.0",
+            version=version if version is not None else "v2.0.0",
             on_priming=lambda: self._submit(self.start_priming()),
             on_cancel_priming=lambda: self._submit(self.cancel_priming()),
             on_standby=lambda: self._submit(self.set_standby(not self.tray.standby)),
@@ -252,11 +251,11 @@ class WaterCoolerManager:
     def handle_on_mode_settings(self):
         def preset(voltage, speed, color):
             return lambda: self._change_settings(current_voltage=voltage, current_fan_speed=speed,
-                pump_is_off=False, fan_is_off=False, rgb_is_off=False, rgb_color=color)
+                pump_is_off=False, fan_is_off=False, rgb_color=color)
         def selected(voltage, speed, color):
             return lambda _: (not self.settings.pump_is_off and not self.settings.fan_is_off
-                and not self.settings.rgb_is_off and self.settings.current_voltage == voltage
-                and self.settings.current_fan_speed == speed and self.settings.rgb_color == color)
+                and self.settings.current_voltage == voltage and self.settings.current_fan_speed == speed
+                and (self.settings.rgb_is_off or self.settings.rgb_color == color))
         return pystray.Menu(
             pystray.MenuItem('Turn on Low Mode', preset(PumpVoltage.V7, 25, (0, 255, 0)),
                              checked=selected(PumpVoltage.V7, 25, (0, 255, 0))),
@@ -319,7 +318,11 @@ class WaterCoolerManager:
                 enabled=lambda _: not self._effective_rgb_state().mk2_only))
 
     def handle_autostart_settings(self):
-        self.settings.set_autostart(not self.settings.auto_start)
+        try:
+            self.settings.set_autostart(not self.settings.auto_start)
+        except (OSError, ValueError) as error:
+            self.tray.show_notification(f'Could not change autostart: {error}')
+        self.tray.refresh()
 
     def handle_autoconnect_settings(self):
         self.settings.auto_connect = not self.settings.auto_connect

@@ -3,6 +3,7 @@ import json
 import platform
 from typing import Tuple
 from .enums import PumpVoltage, RGBState
+from . import linux_autostart
 if platform.system() == "Windows":
     import winshell
 from os.path import join, basename, splitext
@@ -29,6 +30,10 @@ class Settings:
             self._load_from_registry()
         else:
             self._load_from_file()
+            if platform.system() == 'Linux':
+                # The desktop entry is authoritative, including changes made
+                # through the desktop's startup settings outside this app.
+                self.auto_start = linux_autostart.is_enabled()
 
     def save(self):
         if platform.system() == 'Windows':
@@ -110,8 +115,6 @@ class Settings:
             pass
 
     def set_autostart(self, autostart: bool):
-        self.auto_start = autostart
-
         if platform.system() == 'Windows':
             startup_dir = winshell.startup()
             shortcut_path = join(startup_dir, f"{splitext(basename(executable))[0]}.lnk")
@@ -125,5 +128,10 @@ class Settings:
                 )
             elif os.path.exists(shortcut_path):
                 os.remove(shortcut_path)
+        elif platform.system() == 'Linux':
+            linux_autostart.set_enabled(autostart)
+        else:
+            raise ValueError('Autostart is only supported on Windows and Linux')
 
+        self.auto_start = autostart
         self.save()
