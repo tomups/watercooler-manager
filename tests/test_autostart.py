@@ -152,5 +152,63 @@ class WindowsAutostartTests(unittest.TestCase):
             self.assertEqual(save.call_count, 2)
 
 
+class PackagedAutostartTests(unittest.TestCase):
+    def test_packaged_and_appimage_launchers_use_persistent_entry_point(self):
+        with patch.dict(os.environ, WATERCOOLER_LAUNCHER='/home/user/My App.AppImage'):
+            command = linux_autostart._command()
+        self.assertEqual(command[-1], '/home/user/My App.AppImage')
+        self.assertNotIn('main.py', ' '.join(command))
+        self.assertNotIn('_MEI', ' '.join(command))
+
+    def test_snap_uses_session_agent_without_forwarding_shell_arguments(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(os.environ, SNAP='/snap/watercooler-manager/42',
+                           SNAP_USER_DATA=directory):
+            linux_autostart.set_enabled(True)
+            self.assertTrue(linux_autostart.is_enabled())
+            path = Path(directory) / '.config/autostart/watercooler-manager.desktop'
+            self.assertIn('Exec="watercooler-manager"\n', path.read_text())
+            self.assertNotIn('/42', path.read_text())
+
+    def test_flatpak_calls_portal_and_never_writes_host_autostart(self):
+        with patch.dict(os.environ, FLATPAK_ID='io.github.tomups.WatercoolerManager'), \
+                patch('watercooler_manager.flatpak_autostart.set_enabled') as portal, \
+                patch.object(linux_autostart, 'entry_path') as entry:
+            linux_autostart.set_enabled(True)
+            portal.assert_called_once_with(True)
+            entry.assert_not_called()
+
+    def test_portal_denial_does_not_save_enabled_setting(self):
+        with patch.object(Settings, 'load'):
+            settings = Settings()
+        with patch.dict(os.environ, FLATPAK_ID='io.github.tomups.WatercoolerManager'), \
+                patch.object(settings_module.platform, 'system', return_value='Linux'), \
+                patch('watercooler_manager.flatpak_autostart.set_enabled',
+                      side_effect=OSError('Permission denied')), \
+                patch.object(settings, 'save') as save:
+            with self.assertRaisesRegex(OSError, 'Permission denied'):
+                settings.set_autostart(True)
+            self.assertFalse(settings.auto_start)
+            save.assert_not_called()
+
+    def test_flatpak_reload_keeps_portal_confirmed_setting(self):
+        with patch.dict(os.environ, FLATPAK_ID='io.github.tomups.WatercoolerManager'), \
+                patch.object(settings_module.platform, 'system', return_value='Linux'), \
+                patch.object(Settings, '_load_from_file',
+                             lambda settings: setattr(settings, 'auto_start', True)), \
+                patch.object(linux_autostart, 'is_enabled') as entry:
+            self.assertTrue(Settings().auto_start)
+            entry.assert_not_called()
+
+    def test_sandbox_preferences_use_persistent_private_directory(self):
+        with patch.dict(os.environ, FLATPAK_ID='io.github.tomups.WatercoolerManager',
+                        XDG_CONFIG_HOME='/sandbox/config'):
+            self.assertEqual(settings_module._config_file(),
+                             '/sandbox/config/watercooler-manager/settings.json')
+        with patch.dict(os.environ, SNAP_USER_COMMON='/home/user/snap/app/common'):
+            self.assertEqual(settings_module._config_file(),
+                             '/home/user/snap/app/common/settings.json')
+
+
 if __name__ == '__main__':
     unittest.main()

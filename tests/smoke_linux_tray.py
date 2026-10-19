@@ -218,7 +218,7 @@ def run_parent(executable=None, virtual_host=False):
         if child.poll() is None:
             child.terminate()
             child.wait(timeout=5)
-        if child.returncode and not executable:
+        if child.returncode and child.returncode != -15:
             print(child.communicate()[1], file=sys.stderr)
         if host:
             host.loop.quit()

@@ -50,3 +50,8 @@ jobs:
         env:
           PYSTRAY_BACKEND: dummy
         run: .venv/bin/python tests/smoke_linux_autostart.py
+      - name: Flatpak Background portal protocol
+        env:
+          PYSTRAY_BACKEND: dummy
+          NO_AT_BRIDGE: '1'
+        run: dbus-run-session -- .venv/bin/python tests/smoke_flatpak_autostart.py

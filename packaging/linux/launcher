@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+launcher=$(readlink -f -- "$0")
+app_dir=$(dirname -- "$launcher")
+# Keep a persistent entry point rather than a temporary AppImage mount or
+# Python interpreter. All arguments stay separate from shell program text.
+WATERCOOLER_LAUNCHER=${APPIMAGE:-$launcher}
+export WATERCOOLER_LAUNCHER
+
+# AppIndicator exports icon file paths to the desktop tray host. Its private
+# /tmp is invisible outside a sandbox, so use a persistent, host-visible path.
+if [ -n "${FLATPAK_ID:-}" ]; then
+    TMPDIR="$XDG_CACHE_HOME/watercooler-manager/tray"
+elif [ -n "${SNAP:-}" ]; then
+    TMPDIR="$SNAP_USER_COMMON/tray"
+    XDG_CONFIG_HOME="$SNAP_USER_DATA/.config"
+    export XDG_CONFIG_HOME
+fi
+if [ -n "${FLATPAK_ID:-}${SNAP:-}" ]; then
+    mkdir -p -- "$TMPDIR"
+    export TMPDIR
+fi
+exec "$app_dir/WaterCoolerManager" "$@"

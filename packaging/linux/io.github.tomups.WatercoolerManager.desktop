@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Watercooler Manager
+Comment=Control laptop water cooler fans, pump and lighting over Bluetooth
+Exec=watercooler-manager
+Icon=io.github.tomups.WatercoolerManager
+Terminal=false
+StartupNotify=false
+Categories=Settings;HardwareSettings;
+Keywords=Bluetooth;Cooling;Fan;Pump;RGB;

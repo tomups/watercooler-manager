@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.tomups.WatercoolerManager</id>
+  <name>Watercooler Manager</name>
+  <summary>Control Bluetooth laptop water coolers from the system tray</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <description>
+    <p>Control compatible LCT21001 and LCT22002 laptop water coolers over Bluetooth.
+    Set fan speed, pump voltage, cooling presets and RGB lighting from a tray menu.</p>
+    <p>Requires a Bluetooth adapter, the host BlueZ service and a desktop with
+    StatusNotifier or AppIndicator tray support.</p>
+  </description>
+  <launchable type="desktop-id">io.github.tomups.WatercoolerManager.desktop</launchable>
+  <url type="homepage">https://github.com/tomups/watercooler-manager</url>
+  <url type="bugtracker">https://github.com/tomups/watercooler-manager/issues</url>
+  <developer id="io.github.tomups"><name>tomups</name></developer>
+  <provides><binary>watercooler-manager</binary></provides>
+  <content_rating type="oars-1.1"/>
+  <releases><release version="2.0.0" date="2026-10-19"/></releases>
+</component>
