@@ -63,11 +63,6 @@ def _command():
         # snapd's session agent re-enters the snap and forwards Exec arguments.
         # Do not forward our native shell wrapper or a revision-specific path.
         return ['watercooler-manager']
-    if os.environ.get('WATERCOOLER_LAUNCHER'):
-        launcher = Path(os.environ['WATERCOOLER_LAUNCHER'])
-        if not launcher.is_absolute():
-            raise ValueError('The packaged launcher must be an absolute path')
-        return ['/bin/sh', '-c', 'exec "$@"', 'watercooler-manager', str(launcher)]
     # GLib checks the executable before expanding %% escapes; the desktop
     # standard also disallows '=' in that token. A fixed shell wrapper keeps
     # unusual installation paths in arguments. Paths never enter shell code.
@@ -76,6 +71,11 @@ def _command():
         # Preserve a deliberate legacy-tray choice on older X11 desktops.
         script = 'PYSTRAY_BACKEND=gtk ' + script
     command = ['/bin/sh', '-c', script, 'watercooler-manager']
+    if os.environ.get('WATERCOOLER_LAUNCHER'):
+        launcher = Path(os.environ['WATERCOOLER_LAUNCHER'])
+        if not launcher.is_absolute():
+            raise ValueError('The packaged launcher must be an absolute path')
+        return command + [str(launcher)]
     # Keep the venv interpreter path: resolving its symlink would lose the
     # environment. Frozen executables must never point into _MEIPASS.
     command.append(str(Path(sys.executable).absolute()))

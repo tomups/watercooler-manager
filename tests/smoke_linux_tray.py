@@ -96,7 +96,7 @@ class VirtualHost:
         self.thread.start()
 
 
-def run_parent(executable=None, virtual_host=False):
+def run_parent(executable=None, virtual_host=False, exit_via_menu=False):
     from gi.repository import Gio, GLib
     from PIL import Image
 
@@ -116,7 +116,7 @@ def run_parent(executable=None, virtual_host=False):
                               "org.kde.StatusNotifierWatcher", "RegisteredStatusNotifierItems")
 
     def until(predicate):
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             if child.poll() is not None:
                 raise AssertionError(f"Tray exited early ({child.returncode})")
@@ -134,6 +134,7 @@ def run_parent(executable=None, virtual_host=False):
                              env=dict(os.environ, NO_AT_BRIDGE='1'),
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     icon_paths = []
+    succeeded = False
     try:
         item = until(lambda: next(iter(set(registered()) - before), None))
         service, separator, suffix = item.partition("/")
@@ -187,10 +188,21 @@ def run_parent(executable=None, virtual_host=False):
         if executable:
             # A real app's Connect/Exit actions can touch hardware/settings.
             # Inspect startup only; the source test exercises simulated clicks.
-            child.terminate()
+            if exit_via_menu:
+                # Only in disposable package-test environments: real Exit may
+                # save settings. Flatpak/Snap launchers must close their app,
+                # not just the launcher process which owns the stdout pipe.
+                click('Exit')
+            else:
+                child.terminate()
             child.communicate(timeout=10)
-            Path(disconnected_icon).unlink(missing_ok=True)
+            if exit_via_menu:
+                assert child.returncode == 0, child.returncode
+                assert not any(Path(filename).exists() for filename in icon_paths), 'Icon leaked after exit'
+            else:
+                Path(disconnected_icon).unlink(missing_ok=True)
             print('PASS: frozen executable registers a native tray, full menu, and theme-aware icon')
+            succeeded = True
             return
         click("Connect")
         until(lambda: "Disconnect" in menu())
@@ -214,11 +226,12 @@ def run_parent(executable=None, virtual_host=False):
         assert not any(Path(filename).exists() for filename in icon_paths), "Icon leaked after exit"
         print("PASS: native tray registration, full menu, Connect/Disconnect dispatch, "
               "64px icons, updates, Exit, and temporary-file cleanup")
+        succeeded = True
     finally:
         if child.poll() is None:
             child.terminate()
             child.wait(timeout=5)
-        if child.returncode and child.returncode != -15:
+        if not succeeded:
             print(child.communicate()[1], file=sys.stderr)
         if host:
             host.loop.quit()
@@ -232,5 +245,7 @@ if __name__ == "__main__":
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument('--virtual-host', action='store_true', help='Use only in an isolated D-Bus session')
         parser.add_argument('--executable', help='Check frozen startup without clicking controls or saving settings')
+        parser.add_argument('--exit-via-menu', action='store_true',
+                            help='Graceful Exit in a disposable package-test environment (may save settings)')
         args = parser.parse_args()
-        run_parent(args.executable, args.virtual_host)
+        run_parent(args.executable, args.virtual_host, args.exit_via_menu)

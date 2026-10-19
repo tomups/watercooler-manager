@@ -21,7 +21,7 @@ in stdenvNoCC.mkDerivation {
     runHook preInstall
     mkdir -p $out/lib/watercooler-manager $out/bin
     cp -r src/. $out/lib/watercooler-manager/
-    makeWrapper ${python}/bin/python $out/bin/watercooler-manager \
+    makeShellWrapper ${python}/bin/python $out/bin/watercooler-manager \
       --add-flags "$out/lib/watercooler-manager/main.py" \
       --set WATERCOOLER_LAUNCHER "$out/bin/watercooler-manager" \
       --run 'candidate=$(command -v watercooler-manager || true); if [ -n "$candidate" ]; then export WATERCOOLER_LAUNCHER="$candidate"; fi' \

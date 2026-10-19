@@ -154,9 +154,11 @@ class WindowsAutostartTests(unittest.TestCase):
 
 class PackagedAutostartTests(unittest.TestCase):
     def test_packaged_and_appimage_launchers_use_persistent_entry_point(self):
-        with patch.dict(os.environ, WATERCOOLER_LAUNCHER='/home/user/My App.AppImage'):
+        launcher = str(Path(tempfile.gettempdir()) / 'My App.AppImage')
+        with patch.dict(os.environ, WATERCOOLER_LAUNCHER=launcher, PYSTRAY_BACKEND='gtk'):
             command = linux_autostart._command()
-        self.assertEqual(command[-1], '/home/user/My App.AppImage')
+        self.assertEqual(command[-1], launcher)
+        self.assertEqual(command[2], 'PYSTRAY_BACKEND=gtk exec "$@"')
         self.assertNotIn('main.py', ' '.join(command))
         self.assertNotIn('_MEI', ' '.join(command))
 
@@ -201,13 +203,14 @@ class PackagedAutostartTests(unittest.TestCase):
             entry.assert_not_called()
 
     def test_sandbox_preferences_use_persistent_private_directory(self):
+        base = Path(tempfile.gettempdir())
         with patch.dict(os.environ, FLATPAK_ID='io.github.tomups.WatercoolerManager',
-                        XDG_CONFIG_HOME='/sandbox/config'):
+                        XDG_CONFIG_HOME=str(base / 'sandbox/config')):
             self.assertEqual(settings_module._config_file(),
-                             '/sandbox/config/watercooler-manager/settings.json')
-        with patch.dict(os.environ, SNAP_USER_COMMON='/home/user/snap/app/common'):
+                             str(base / 'sandbox/config/watercooler-manager/settings.json'))
+        with patch.dict(os.environ, SNAP_USER_COMMON=str(base / 'snap/app/common')):
             self.assertEqual(settings_module._config_file(),
-                             '/home/user/snap/app/common/settings.json')
+                             str(base / 'snap/app/common/settings.json'))
 
 
 if __name__ == '__main__':

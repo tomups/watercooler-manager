@@ -30,4 +30,4 @@ display_pid=$!
 trap 'kill "$display_pid"' EXIT
 export DISPLAY=:99 NO_AT_BRIDGE=1
 sleep 1
-dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable /usr/bin/watercooler-manager
+dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable /usr/bin/watercooler-manager --exit-via-menu

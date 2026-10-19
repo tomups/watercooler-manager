@@ -44,7 +44,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-gi python3-pil xvfb xauth dbus-x11
           build/linux/WaterCoolerManager/WaterCoolerManager --help
-          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/linux/WaterCoolerManager/WaterCoolerManager
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/linux/WaterCoolerManager/WaterCoolerManager --exit-via-menu
           tar -C build/linux -czf build/linux-payload.tar.gz WaterCoolerManager
       - uses: actions/upload-artifact@v4
         with:
@@ -81,8 +81,8 @@ jobs:
         run: |
           build/packages/app/watercooler-manager --help
           dist/packages/*.AppImage --help
-          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/packages/app/watercooler-manager
-          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable "$(find dist/packages -name '*.AppImage')"
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/packages/app/watercooler-manager --exit-via-menu
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable "$(find dist/packages -name '*.AppImage')" --exit-via-menu
       - uses: actions/upload-artifact@v4
         with:
           name: linux-packages-x86_64
@@ -126,12 +126,12 @@ jobs:
           python3 scripts/package_linux.py stage
           python3 scripts/package_linux.py flatpak
           flatpak install --user --noninteractive dist/packages/*.flatpak
-          flatpak run --user io.github.tomups.WatercoolerManager --help
+          dbus-run-session -- flatpak run --user io.github.tomups.WatercoolerManager --help
       - name: Test sandboxed tray and exported icon paths
         run: |
           printf '#!/bin/sh\nexec flatpak run --user io.github.tomups.WatercoolerManager "$@"\n' > build/run-flatpak
           chmod +x build/run-flatpak
-          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/run-flatpak
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/run-flatpak --exit-via-menu
       - uses: actions/upload-artifact@v4
         with:
           name: flatpak-x86_64
@@ -158,7 +158,7 @@ jobs:
         run: |
           printf '#!/bin/sh\nexec snap run watercooler-manager "$@"\n' > build-run-snap
           chmod +x build-run-snap
-          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build-run-snap
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build-run-snap --exit-via-menu
 
   nix:
     runs-on: ubuntu-24.04
@@ -174,7 +174,7 @@ jobs:
           build/nix-result/bin/watercooler-manager --help
           sudo apt-get update
           sudo apt-get install -y python3-gi python3-pil xvfb xauth dbus-x11
-          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/nix-result/bin/watercooler-manager
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/nix-result/bin/watercooler-manager --exit-via-menu
       - name: Export package closure and locked source
         run: |
           sudo apt-get update
