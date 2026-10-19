@@ -1,5 +1,5 @@
 {
-  description = "Bluetooth laptop water cooler controls for Linux desktops";
+  description = "Utility to manage LCT21001 / LCT22002 laptop water coolers";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 

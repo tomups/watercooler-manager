@@ -1,5 +1,7 @@
 # Water Cooler Manager
 
+Utility to manage LCT21001 / LCT22002 laptop water coolers
+
 Control compatible laptop water coolers over Bluetooth from your Windows or Linux system tray. Adjust cooling, choose RGB effects, and save your preferred settings without opening a separate control window.
 
 ![Water Cooler Manager system tray menu](https://github.com/user-attachments/assets/d9b69dd2-7aa6-4dce-97bc-4bb408dd60b8)

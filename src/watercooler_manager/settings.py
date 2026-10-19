@@ -135,7 +135,7 @@ class Settings:
                     Path=shortcut_path,
                     Target=executable,
                     Icon=(executable, 0),
-                    Description="Watercooler Manager"
+                    Description="Utility to manage LCT21001 / LCT22002 laptop water coolers"
                 )
             elif os.path.exists(shortcut_path):
                 os.remove(shortcut_path)

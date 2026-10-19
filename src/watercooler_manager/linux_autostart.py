@@ -94,7 +94,7 @@ def set_enabled(enabled):
         command = ' '.join(_quote_argument(argument) for argument in _command())
         content = ('[Desktop Entry]\nType=Application\nVersion=1.0\n'
                    'Name=Watercooler Manager\n'
-                   'Comment=Bluetooth water cooler controls\n'
+                   'Comment=Utility to manage LCT21001 / LCT22002 laptop water coolers\n'
                    f'Exec={command}\nTerminal=false\n')
     else:
         # An override also disables a matching system-wide installation.

@@ -145,7 +145,7 @@ class WindowsAutostartTests(unittest.TestCase):
                 Path=os.path.join('startup',
                                   Path(settings_module.executable).stem + '.lnk'),
                 Target=settings_module.executable, Icon=(settings_module.executable, 0),
-                Description='Watercooler Manager')
+                Description='Utility to manage LCT21001 / LCT22002 laptop water coolers')
             settings.set_autostart(False)
             self.assertFalse(settings.auto_start)
             remove.assert_called_once_with(shell.CreateShortcut.call_args.kwargs['Path'])

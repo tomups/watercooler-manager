@@ -2,10 +2,18 @@
 <component type="desktop-application">
   <id>io.github.tomups.WatercoolerManager</id>
   <name>Watercooler Manager</name>
-  <summary>Control Bluetooth laptop water coolers from the system tray</summary>
+  <summary>Utility to manage LCT21001 / LCT22002 laptop water coolers</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
   <description>
+    <p>Designed for coolers using the LCT21001 (Mk1) or LCT22002 (Mk2) controller,
+    including compatible versions of:</p>
+    <ul>
+      <li>XMG OASIS Mk1 and Mk2</li>
+      <li>PC Specialist Liquid Cooler 1.0 and 2.0</li>
+      <li>Eluktronics Liquid Propulsion Package (LPP) G1 and G2</li>
+      <li>TUXEDO Aquaris Gen5 and Gen6</li>
+    </ul>
     <p>Control compatible LCT21001 and LCT22002 laptop water coolers over Bluetooth.
     Set fan speed, pump voltage, cooling presets and RGB lighting from a tray menu.</p>
     <p>Requires a Bluetooth adapter, the host BlueZ service and a desktop with

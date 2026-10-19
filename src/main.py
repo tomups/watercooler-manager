@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""System tray application for LCT water coolers."""
+"""Utility to manage LCT21001 / LCT22002 laptop water coolers"""
 
 import argparse
 import logging

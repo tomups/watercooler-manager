@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Watercooler Manager
-Comment=Control laptop water cooler fans, pump and lighting over Bluetooth
+Comment=Utility to manage LCT21001 / LCT22002 laptop water coolers
 Exec=watercooler-manager
 Icon=io.github.tomups.WatercoolerManager
 Terminal=false

@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+from textwrap import indent
 import tomllib
 import urllib.request
 
@@ -17,7 +18,15 @@ BUILD = ROOT / 'build/packages'
 DIST = ROOT / 'dist/packages'
 COMMON = ROOT / 'packaging/linux'
 APP_ID = 'io.github.tomups.WatercoolerManager'
-VERSION = tomllib.loads((ROOT / 'pyproject.toml').read_text())['project']['version']
+PROJECT = tomllib.loads((ROOT / 'pyproject.toml').read_text())['project']
+VERSION = PROJECT['version']
+SUMMARY = PROJECT['description']
+LONG_DESCRIPTION = '''Designed for coolers using the LCT21001 (Mk1) or LCT22002 (Mk2) controller, including compatible versions of:
+
+- XMG OASIS Mk1 and Mk2
+- PC Specialist Liquid Cooler 1.0 and 2.0
+- Eluktronics Liquid Propulsion Package (LPP) G1 and G2
+- TUXEDO Aquaris Gen5 and Gen6'''
 STEM = f'watercooler-manager-{VERSION}'
 
 
@@ -114,7 +123,7 @@ def native():
         'name': 'watercooler-manager', 'arch': 'amd64', 'platform': 'linux',
         'version': VERSION, 'release': '1', 'section': 'utils', 'priority': 'optional',
         'maintainer': 'tomups <tomups@users.noreply.github.com>',
-        'description': 'System tray controls for Bluetooth laptop water coolers',
+        'description': SUMMARY + '\n\n' + LONG_DESCRIPTION,
         'homepage': 'https://github.com/tomups/watercooler-manager',
         'license': 'GPL-3.0-only',
         'contents': [
@@ -131,10 +140,13 @@ def native():
         },
     }
     config_path = BUILD / 'nfpm.json'
-    config_path.write_text(json.dumps(config, indent=2) + '\n')
     executable = tool('nfpm')
     for packager, suffix in [('deb', 'amd64.deb'), ('rpm', 'x86_64.rpm'),
                              ('archlinux', 'x86_64.pkg.tar.zst')]:
+        if packager == 'archlinux':
+            # Arch package metadata only supports a single-line description.
+            config['description'] = SUMMARY
+        config_path.write_text(json.dumps(config, indent=2) + '\n')
         run(executable, 'package', '--config', config_path, '--packager', packager,
             '--target', DIST / f'{STEM}-1-{suffix}')
     archive_path = DIST / f'{STEM}-linux-x86_64.tar.gz'
@@ -143,7 +155,7 @@ def native():
 pkgname=watercooler-manager-bin
 pkgver={VERSION}
 pkgrel=1
-pkgdesc='System tray controls for Bluetooth laptop water coolers'
+pkgdesc='{SUMMARY}'
 arch=('x86_64')
 url='https://github.com/tomups/watercooler-manager'
 license=('GPL-3.0-only')
@@ -187,8 +199,9 @@ def snap():
     metadata.mkdir()
     (metadata / 'snap.yaml').write_text(f'''name: watercooler-manager
 version: '{VERSION}'
-summary: Bluetooth laptop water cooler controls
-description: Control cooler fans, pump and RGB lighting from your system tray.
+summary: {SUMMARY}
+description: |
+{indent(LONG_DESCRIPTION, '  ')}
 base: core24
 architectures: [amd64]
 confinement: strict

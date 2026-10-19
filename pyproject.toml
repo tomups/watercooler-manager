@@ -1,7 +1,7 @@
 [project]
 name = "watercooler-manager"
 version = "2.0.0"
-description = "System tray controls for LCT21001 and LCT22002 laptop water coolers"
+description = "Utility to manage LCT21001 / LCT22002 laptop water coolers"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
 dependencies = [

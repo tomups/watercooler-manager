@@ -42,7 +42,16 @@ in stdenvNoCC.mkDerivation {
       ${python}/bin/python -c 'from watercooler_manager import WaterCoolerManager'
   '';
   meta = {
-    description = "System tray controls for Bluetooth laptop water coolers";
+    description = project.project.description;
+    longDescription = ''
+      Designed for coolers using the LCT21001 (Mk1) or LCT22002 (Mk2) controller,
+      including compatible versions of:
+
+      - XMG OASIS Mk1 and Mk2
+      - PC Specialist Liquid Cooler 1.0 and 2.0
+      - Eluktronics Liquid Propulsion Package (LPP) G1 and G2
+      - TUXEDO Aquaris Gen5 and Gen6
+    '';
     homepage = "https://github.com/tomups/watercooler-manager";
     license = lib.licenses.gpl3Only;
     platforms = lib.platforms.linux;
