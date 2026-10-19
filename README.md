@@ -25,7 +25,7 @@ Windows 11 has hardware verification. Linux tray integration and LCT22002 cooler
 3. Run the executable. The app appears in the system tray, which may be inside the taskbar's hidden-icons menu.
 4. Right-click the tray icon and choose **Connect**.
 
-On Linux, releases provide **DEB, RPM, Arch, Flatpak, Snap, AppImage, portable tar.gz, and Nix** builds. See [Linux packages](packaging/README.md) for installation commands, Bluetooth setup, supported targets, and local builds. Frozen binaries target x86_64 with glibc 2.34 or newer; Flatpak supplies its runtime and Nix builds from source. A graphical desktop session, a tray host, and the host BlueZ service are required. Native packages declare BlueZ as a dependency.
+On Linux, releases provide **DEB, RPM, Arch, Flatpak, Snap, AppImage, portable tar.gz, and Nix** builds. See [Linux packages](packaging/README.md) for installation commands, Bluetooth setup, supported targets, and local builds. Standalone/native binaries target x86_64 with glibc 2.34 or newer; Flatpak and Snap supply their runtimes and Nix builds from source. A graphical desktop session, a tray host, and the host BlueZ service are required. Native packages declare BlueZ as a dependency.
 
 The disconnected tray icon is a muted grey droplet with a slash: lighter on dark themes and darker on light themes. It follows theme changes automatically. The colored connected droplet stays the same in either theme.
 

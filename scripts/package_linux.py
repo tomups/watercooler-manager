@@ -72,6 +72,7 @@ def desktop_files(prefix):
          prefix / f'share/icons/hicolor/512x512/apps/{APP_ID}.png')
     copy(ROOT / 'LICENSE', prefix / 'share/licenses/watercooler-manager/LICENSE')
     copy(ROOT / 'README.md', prefix / 'share/doc/watercooler-manager/README.md')
+    copy(ROOT / 'packaging/README.md', prefix / 'share/doc/watercooler-manager/packaging/README.md')
 
 
 def stage(payload):
@@ -79,6 +80,7 @@ def stage(payload):
         raise ValueError('Build an --onedir payload first (see packaging/linux/Dockerfile)')
     app = reset(BUILD / 'app')
     shutil.copytree(payload, app, dirs_exist_ok=True, symlinks=True)
+    copy(payload.parent / 'snap-runtime/libxcb.so.1', BUILD / 'snap-runtime/libxcb.so.1')
     # EL9.8 backports GLIBC_2.35 symbols into its glibc 2.34 packages.
     # Its newer libgcc therefore cannot run against an older EL9 libc.
     # Use the host compiler runtime, as AppImage also recommends, rather
@@ -122,9 +124,10 @@ def native():
              'dst': '/usr/bin/watercooler-manager', 'type': 'symlink'},
         ],
         'overrides': {
-            'deb': {'depends': ['bluez', 'libc6 (>= 2.34)', 'libgcc-s1']},
-            'rpm': {'depends': ['bluez', 'glibc >= 2.34', 'libgcc_s.so.1()(64bit)']},
-            'archlinux': {'depends': ['bluez', 'glibc', 'libgcc_s.so=1-64']},
+            'deb': {'depends': ['bluez', 'libc6 (>= 2.34)', 'libgcc-s1', 'libxcb1']},
+            'rpm': {'depends': ['bluez', 'glibc >= 2.34', 'libgcc_s.so.1()(64bit)',
+                                'libxcb.so.1()(64bit)']},
+            'archlinux': {'depends': ['bluez', 'glibc', 'libgcc_s.so=1-64', 'libxcb']},
         },
     }
     config_path = BUILD / 'nfpm.json'
@@ -144,7 +147,7 @@ pkgdesc='System tray controls for Bluetooth laptop water coolers'
 arch=('x86_64')
 url='https://github.com/tomups/watercooler-manager'
 license=('GPL-3.0-only')
-depends=('bluez' 'glibc' 'libgcc_s.so=1-64')
+depends=('bluez' 'glibc' 'libgcc_s.so=1-64' 'libxcb')
 provides=('watercooler-manager')
 conflicts=('watercooler-manager')
 options=('!strip')
@@ -179,6 +182,7 @@ def appimage():
 def snap():
     directory = reset(BUILD / 'snap')
     shutil.copytree(BUILD / 'app', directory / 'app', symlinks=True)
+    copy(BUILD / 'snap-runtime/libxcb.so.1', directory / 'app/_internal/libxcb.so.1')
     metadata = directory / 'meta'
     metadata.mkdir()
     (metadata / 'snap.yaml').write_text(f'''name: watercooler-manager

@@ -17,13 +17,13 @@ Release CI builds x86_64 DEB, RPM, Arch, Flatpak, Snap, AppImage and portable ta
 
 Native packages install `watercooler-manager` and a desktop menu entry. They declare BlueZ as a dependency, so installing through apt/dnf/zypper/pacman can install the host Bluetooth service automatically. The radio and service must also be enabled. These packages do not replace system Bluetooth configuration or enable login startup without your choice.
 
-Flatpak needs Flatpak and the Flathub runtime source; its bundle includes a runtime repository hint. Snap needs snapd and the core24 base (downloaded by snapd). GitHub Snap downloads are unsigned local packages, hence `--dangerous`; this skips store assertion verification, not confinement. Bluetooth access must be connected manually unless store auto-connection is separately approved. AppImage and tar.gz users must install and enable BlueZ through their distribution.
+Flatpak needs Flatpak and the Flathub runtime source; its bundle includes a runtime repository hint. Snap needs snapd and the core24 base (downloaded by snapd). GitHub Snap downloads are unsigned local packages, hence `--dangerous`; this skips store assertion verification, not confinement. Bluetooth access must be connected manually unless store auto-connection is separately approved. Flatpak, Snap, AppImage and tar.gz users must install and enable the host BlueZ service through their distribution.
 
 All formats need a working graphical desktop and StatusNotifier/AppIndicator tray host. On GNOME, enable the AppIndicator extension. See the main README for other desktops. Container tests verify startup, menus, icons and theme changes; physical Bluetooth controls still need hardware verification in the chosen packaging environment.
 
 ## Compatibility and startup
 
-The shared binary payload is built on Rocky Linux 9 with Python 3.11 and glibc 2.34. Python, Pillow, Bleak, GTK/AppIndicator bindings and GTK runtime libraries are included. The host supplies glibc and libgcc; native packages declare both dependencies, and staging checks every bundled ELF file against the glibc 2.34 symbol baseline. This improves the old Ubuntu 24.04/glibc 2.39 baseline, but is not a promise that every distribution or graphics configuration works. RHEL 8, Ubuntu 20.04, musl distributions and other CPU architectures need a source or Nix build rather than these frozen binaries. Native installation/tray CI covers Debian 12, Ubuntu 22.04, Rocky 9, Fedora 43, Arch and openSUSE Tumbleweed. Flatpak and Snap have separate sandboxed tray checks.
+The shared binary payload is built on Rocky Linux 9 with Python 3.11 and glibc 2.34. Python, Pillow, Bleak, GTK/AppIndicator bindings and GTK runtime libraries are included. Standalone/native builds use the host glibc, libgcc and XCB; native packages declare those dependencies, and staging checks every bundled ELF file against the glibc 2.34 symbol baseline. This improves the old Ubuntu 24.04/glibc 2.39 baseline, but is not a promise that every distribution or graphics configuration works. On older glibc distributions, use Flatpak, Snap, Nix or a source installation instead of standalone/native downloads. Flatpak and Snap supply their own runtimes. Musl distributions and other CPU architectures need a compatible runtime or source/Nix build. Native installation/tray CI covers Debian 12, Ubuntu 22.04, Rocky 9, Fedora 43, Arch and openSUSE Tumbleweed. Flatpak and Snap have separate sandboxed tray checks.
 
 Choose **Settings → Start on boot** to start at desktop login:
 
@@ -63,7 +63,7 @@ flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flath
 python3 scripts/package_linux.py flatpak
 ```
 
-Outputs are in `dist/packages`. The intermediate frozen directory is in `build/linux/WaterCoolerManager`. `python3 scripts/package_linux.py checksums` writes SHA256SUMS for local outputs. The release workflow generates combined checksums including Windows and Nix artifacts.
+Outputs are in `dist/packages`. The intermediate frozen directory is in `build/linux/WaterCoolerManager`; `build/linux/snap-runtime` carries XCB separately for the minimal Snap base. Other formats use the desktop's XCB library. `python3 scripts/package_linux.py checksums` writes SHA256SUMS for local outputs. The release workflow generates combined checksums including Windows and Nix artifacts.
 
 The generated `*-arch-recipe.tar.gz` includes a PKGBUILD referencing the matching release tar.gz and its actual hash. It can build the same payload locally with makepkg, or serve as the starting point for a separate AUR submission. Before the matching version tag is published, place the portable tar.gz beside PKGBUILD so makepkg can use the local source file.
 

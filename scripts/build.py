@@ -2,6 +2,7 @@
 
 import argparse
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -44,6 +45,16 @@ def main():
             command.extend(['--add-binary', str(path) + ':.'])
     command.append("src/main.py")
     subprocess.run(command, cwd=root, check=True)
+    if sys.platform == 'linux' and args.onedir:
+        # PyInstaller leaves libxcb to the desktop. Snap's minimal core24 base
+        # has no X11 libraries: carry it separately for that format instead of
+        # overriding other desktops' XCB (which must match graphics drivers).
+        runtime = root / args.distpath / 'snap-runtime'
+        runtime.mkdir(parents=True, exist_ok=True)
+        path = resolve_library_path('libxcb.so.1')
+        if path is None:
+            raise RuntimeError('Install the XCB runtime before building')
+        shutil.copy2(path, runtime / 'libxcb.so.1')
 
 
 if __name__ == "__main__":

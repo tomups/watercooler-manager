@@ -51,7 +51,7 @@ jobs:
           sudo apt-get install -y python3-gi python3-pil xvfb xauth dbus-x11
           build/linux/WaterCoolerManager/WaterCoolerManager --help
           xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/linux/WaterCoolerManager/WaterCoolerManager --exit-via-menu
-          tar -C build/linux -czf build/linux-payload.tar.gz WaterCoolerManager
+          tar -C build/linux -czf build/linux-payload.tar.gz WaterCoolerManager snap-runtime
       - uses: actions/upload-artifact@v4
         with:
           name: linux-payload
