@@ -11,7 +11,8 @@
     "--socket=fallback-x11",
     "--device=dri",
     "--system-talk-name=org.bluez",
-    "--talk-name=org.kde.StatusNotifierWatcher"
+    "--talk-name=org.kde.StatusNotifierWatcher",
+    "--talk-name=org.freedesktop.Notifications"
   ],
   "modules": [
     {

@@ -32,7 +32,7 @@ Choose **Settings → Start on boot** to start at desktop login:
 - Snap uses snapd's session autostart agent and a revision-independent command. Settings live in `$SNAP_USER_COMMON/settings.json` and survive refreshes.
 - Flatpak requests autostart through the desktop's Background portal. The desktop may prompt for permission; declining leaves the setting unchanged. A desktop portal backend supporting Background is required. Flatpak settings live under its private XDG config directory. The checkbox remembers the last portal-confirmed choice; outside changes to portal permissions are managed by the desktop.
 
-Flatpak and Snap place temporary tray icons in their host-visible private cache/data directories, so tray hosts outside the sandbox can read them. Flatpak grants access specifically to BlueZ on the system bus and the StatusNotifier watcher on the session bus; it does not expose the entire buses or home directory. Source and native settings retain `~/.watercooler.json`. Switching between native and sandboxed installs does not migrate preferences automatically.
+Flatpak and Snap place temporary tray icons in their host-visible private cache/data directories, so tray hosts outside the sandbox can read them. Flatpak grants access specifically to BlueZ on the system bus, and the StatusNotifier watcher and desktop notifications on the session bus; it does not expose the entire buses or home directory. Source and native settings retain `~/.watercooler.json`. Switching between native and sandboxed installs does not migrate preferences automatically.
 
 ## Build locally
 
