@@ -13,9 +13,13 @@ export WATERCOOLER_LAUNCHER
 if [ -n "${FLATPAK_ID:-}" ]; then
     TMPDIR="$XDG_CACHE_HOME/watercooler-manager/tray"
 elif [ -n "${SNAP:-}" ]; then
-    TMPDIR="$SNAP_USER_COMMON/tray"
+    # AppIndicator recognises GLib's cache/config/home paths. SNAP_USER_COMMON
+    # is outside the revision's HOME and would be incorrectly prefixed with
+    # $SNAP when exporting the absolute icon name to the desktop.
+    XDG_CACHE_HOME="$SNAP_USER_DATA/.cache"
+    TMPDIR="$XDG_CACHE_HOME/watercooler-manager/tray"
     XDG_CONFIG_HOME="$SNAP_USER_DATA/.config"
-    export XDG_CONFIG_HOME
+    export XDG_CONFIG_HOME XDG_CACHE_HOME
 fi
 if [ -n "${FLATPAK_ID:-}${SNAP:-}" ]; then
     mkdir -p -- "$TMPDIR"

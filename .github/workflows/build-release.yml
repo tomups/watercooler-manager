@@ -90,6 +90,16 @@ jobs:
           dist/packages/*.AppImage --help
           xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/packages/app/watercooler-manager --exit-via-menu
           xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable "$(find dist/packages -name '*.AppImage')" --exit-via-menu
+      - name: Test AppIndicator Snap path handling
+        run: |
+          export SNAP=/snap/watercooler-manager/current
+          export SNAP_USER_DATA="$PWD/build/fake-snap/revision"
+          export SNAP_USER_COMMON="$PWD/build/fake-snap/common"
+          export HOME="$SNAP_USER_DATA"
+          export XDG_CACHE_HOME="$HOME/.cache"
+          export XDG_CONFIG_HOME="$HOME/.config"
+          mkdir -p "$HOME"
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/packages/app/watercooler-manager --exit-via-menu
       - uses: actions/upload-artifact@v4
         with:
           name: linux-packages-x86_64
