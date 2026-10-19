@@ -2,12 +2,11 @@
 
 Utility to manage LCT21001 / LCT22002 laptop water coolers
 
-Control compatible laptop water coolers over Bluetooth from your Windows or Linux system tray. Adjust cooling, choose RGB effects, and save your preferred settings without opening a separate control window.
+Control compatible laptop water coolers your Windows or Linux system tray without having to use the original control panel software. 
 
 ![Water Cooler Manager system tray menu](https://github.com/user-attachments/assets/d9b69dd2-7aa6-4dce-97bc-4bb408dd60b8)
 ![Water Cooler Manager windows system tray menu](https://github.com/user-attachments/assets/606967b7-d3c1-4f1e-9d31-80ed5aebcd39
 )
-
 
 ## Compatibility
 
@@ -18,20 +17,12 @@ Designed for coolers using the **LCT21001 (Mk1)** or **LCT22002 (Mk2)** controll
 - Eluktronics Liquid Propulsion Package (LPP) G1 and G2
 - TUXEDO Aquaris Gen5 and Gen6
 
-Windows 11 has hardware verification. Linux tray integration and LCT22002 cooler controls have been checked on CachyOS with Mango/Wayland; KDE Plasma support was reported by the original Linux contributor. Other Linux desktop/distribution combinations remain unverified. Hardware verification covers LCT22002 firmware 2.0.0.4; behavior may vary with other controllers or firmware versions.
+## Installation and usage
 
-## Download and connect
-
-1. On Windows, download **WaterCoolerManager.exe** from [GitHub Releases](https://github.com/tomups/watercooler-manager/releases/latest). The executable does not require a separate Python installation.
+1. Download the latest release for your platform from [GitHub Releases](https://github.com/tomups/watercooler-manager/releases/latest).
 2. Enable Bluetooth on your computer. Prepare the cooler according to its manufacturer's instructions, then turn it on and wait for its blue pairing light to blink.
 3. Run the executable. The app appears in the system tray, which may be inside the taskbar's hidden-icons menu.
 4. Right-click the tray icon and choose **Connect**.
-
-On Linux, releases provide **DEB, RPM, Arch, Flatpak, Snap, AppImage, portable tar.gz, and Nix** builds. See [Linux packages](packaging/README.md) for installation commands, Bluetooth setup, supported targets, and local builds. Standalone/native binaries target x86_64 with glibc 2.34 or newer; Flatpak and Snap supply their runtimes and Nix builds from source. A graphical desktop session, a tray host, and the host BlueZ service are required. Native packages declare BlueZ as a dependency.
-
-The disconnected tray icon is a muted grey droplet with a slash: lighter on dark themes and darker on light themes. It follows theme changes automatically. The colored connected droplet stays the same in either theme.
-
-Your saved pump, fan, and lighting settings are applied when the cooler connects. Run only one copy of the app at a time.
 
 ## Controls
 
@@ -45,10 +36,6 @@ Your saved pump, fan, and lighting settings are applied when the cooler connects
 | **Water filling** | Start or cancel a guided filling cycle with progress shown in the menu. Fill the reservoir and attach the hoses before starting. |
 | **Settings** | Enable Windows/Linux startup and automatic connection on app startup, view the app version, or check for releases. |
 | **Disconnect / Exit** | Disconnect the cooler, or close the app. Cooling stops on the tested Mk2 unit when it disconnects. |
-
-Firmware and coolant-flow status are shown in the tray menu. Flow status reports whether the device detects normal flow; it is not a numeric flow-rate measurement.
-
-All lighting controls are in **RGB**. Available modes are **Static**, **Breathe**, **Rainbow**, and **Breathe Rainbow**, plus **Spiral**, **Rotating Rainbow**, and **Fast Color Wave** on Mk2. The three additional Mk2 effects choose their own colors, so the Color submenu is disabled while they are selected.
 
 ## Troubleshooting
 
@@ -76,8 +63,6 @@ mise install
 mise exec -- uv sync --locked
 mise exec -- uv run --locked src/main.py
 ```
-
-Mise installs the Python and uv versions pinned in `mise.toml`. uv installs dependencies into the project's `.venv`; manual environment activation is not required.
 
 ### Linux
 
@@ -121,16 +106,6 @@ Desktop requirements:
 - **GNOME:** install and enable [AppIndicator and KStatusNotifierItem Support](https://extensions.gnome.org/extension/615/appindicator-support/). GNOME does not provide this tray support by default.
 - **Mango / Sway / Hyprland and other Wayland compositors:** use a panel or shell with StatusNotifier support, such as a tray-enabled Waybar or Quickshell panel.
 - **XFCE and other X11 desktops:** enable a StatusNotifier/AppIndicator tray plugin. If the desktop only supports GTK's legacy tray, try `PYSTRAY_BACKEND=gtk .venv/bin/python src/main.py`. The `xorg` backend lacks the menus this app requires.
-
-Enable **Settings → Start on boot** to start the app when you log into your desktop. Source and native Linux installations use the distribution-independent [XDG Autostart standard](https://specifications.freedesktop.org/autostart/latest/): it writes `$XDG_CONFIG_HOME/autostart/watercooler-manager.desktop`, defaulting to `~/.config/autostart/watercooler-manager.desktop`. It needs no root privileges or systemd. Flatpak uses the desktop Background portal and Snap uses snapd's session agent; see [package-specific startup behavior](packaging/README.md#compatibility-and-startup). KDE Plasma, GNOME (with tray support), XFCE, Cinnamon, MATE, LXQt, and other sessions that process XDG autostart entries can use the native launcher. Standalone window managers/compositors such as Mango, Sway, and Hyprland need their session to run an XDG autostart runner, for example `dex --autostart`; installing a tray panel alone does not launch autostart entries.
-
-For DankMaterialShell sessions, DMS manages these files but delegates launching to the session. If `systemctl --user is-active xdg-desktop-autostart.target` reports `inactive`, follow the [DMS session-target setup](https://danklinux.com/docs/1.7/dankmaterialshell/autostart#target-not-active), or configure an XDG runner in your compositor. The app does not change global session startup settings or launch other applications.
-
-The launcher records the absolute Python/venv and script paths for source installations, or the persistent executable path for packaged builds. Paths containing spaces are supported, and an explicit `PYSTRAY_BACKEND=gtk` choice is preserved. Keep the installation in place; after moving it or switching installations, turn Start on boot off and on from the new location. Turning it off writes a disabled entry (`Hidden=true`), which also overrides a matching system-wide launcher. At app startup the checkbox reflects the effective desktop entry, including changes made in your desktop's startup settings.
-
-Windows continues to use a Startup-folder shortcut. Auto-connect on app startup works independently of autostart. Linux settings remain in `~/.watercooler.json`; Windows settings remain in the registry.
-
-Headless Linux sessions and WSL without a graphical desktop and usable Bluetooth are not supported by this tray application.
 
 ## Development
 
@@ -181,11 +156,11 @@ mise exec -- uv sync --locked --group build
 
 The release workflow also checks frozen Linux startup against a virtual tray host in an isolated D-Bus session.
 
-The development executable is written to `dist/WaterCoolerManager` on Linux or `dist/WaterCoolerManager.exe` on Windows. Linux builds include GTK/AppIndicator bindings but still depend on a compatible distribution, system services, and tray host. A build from a rolling distribution may not run on older glibc versions. Release CI builds the shared Linux payload on Rocky Linux 9, packages and tests multiple distribution and sandbox formats, builds Windows separately, and publishes through one job only on version tags. See [packaging development](packaging/README.md#build-locally) for the compatibility build and `dist/packages` outputs.
+The development executable is written to `dist/WaterCoolerManager` on Linux or `dist/WaterCoolerManager.exe` on Windows. Linux builds include GTK/AppIndicator bindings but still depend on a compatible distribution, system services, and tray host. A build from a rolling distribution may not run on older glibc versions. 
 
 Dependencies are declared in `pyproject.toml` and locked in `uv.lock`. Use `mise exec -- uv add <package>` to add a dependency, and commit both files. Include tests with behavior changes and describe any hardware validation in your pull request.
 
-## Credits
+## Thanks
 
 - [TUXEDO Control Center](https://github.com/tuxedocomputers/tuxedo-control-center) for its open-source cooler control implementation.
 - [Chocapikk's Uniwill BLE protocol notes](https://gist.github.com/Chocapikk/0baa8e68b87f8ed0873c39504184ebc6) for protocol research.
