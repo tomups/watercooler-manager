@@ -232,7 +232,12 @@ def run_parent(executable=None, virtual_host=False, exit_via_menu=False):
             child.terminate()
             child.wait(timeout=5)
         if not succeeded:
-            print(child.communicate()[1], file=sys.stderr)
+            try:
+                print(child.communicate(timeout=2)[1], file=sys.stderr)
+            except subprocess.TimeoutExpired as error:
+                output = error.stderr or b''
+                print(output.decode(errors='replace') if isinstance(output, bytes) else output,
+                      file=sys.stderr)
         if host:
             host.loop.quit()
             host.thread.join(timeout=5)
