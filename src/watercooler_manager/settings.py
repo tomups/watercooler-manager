@@ -8,10 +8,20 @@ if platform.system() == "Windows":
     import winshell
 from os.path import join, basename, splitext
 from sys import executable
+from pathlib import Path
+
+
+def _config_file():
+    if os.environ.get('FLATPAK_ID'):
+        directory = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config')))
+        return str(directory / 'watercooler-manager/settings.json')
+    if os.environ.get('SNAP_USER_COMMON'):
+        return str(Path(os.environ['SNAP_USER_COMMON']) / 'settings.json')
+    return os.path.expanduser('~/.watercooler.json')
 
 class Settings:
     REGISTRY_KEY = r"Software\WaterCooler"
-    CONFIG_FILE = os.path.expanduser("~/.watercooler.json")
+    CONFIG_FILE = _config_file()
 
     def __init__(self):
         self.current_voltage = PumpVoltage.V7
@@ -30,7 +40,7 @@ class Settings:
             self._load_from_registry()
         else:
             self._load_from_file()
-            if platform.system() == 'Linux':
+            if platform.system() == 'Linux' and not os.environ.get('FLATPAK_ID'):
                 # The desktop entry is authoritative, including changes made
                 # through the desktop's startup settings outside this app.
                 self.auto_start = linux_autostart.is_enabled()
@@ -98,6 +108,7 @@ class Settings:
 
     def _save_to_file(self):
         try:
+            Path(self.CONFIG_FILE).parent.mkdir(parents=True, exist_ok=True)
             config = {
                 'current_voltage': self.current_voltage,
                 'current_fan_speed': self.current_fan_speed,
@@ -124,7 +135,7 @@ class Settings:
                     Path=shortcut_path,
                     Target=executable,
                     Icon=(executable, 0),
-                    Description="Watercooler Manager"
+                    Description="Utility to manage LCT21001 / LCT22002 laptop water coolers"
                 )
             elif os.path.exists(shortcut_path):
                 os.remove(shortcut_path)

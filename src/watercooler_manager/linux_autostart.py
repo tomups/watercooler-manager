@@ -11,6 +11,8 @@ FILENAME = 'watercooler-manager.desktop'
 
 
 def _config_home():
+    if os.environ.get('SNAP_USER_DATA'):
+        return Path(os.environ['SNAP_USER_DATA']) / '.config'
     configured = Path(os.environ.get('XDG_CONFIG_HOME', ''))
     # The base-directory specification requires ignoring relative paths.
     return configured if configured.is_absolute() else Path.home() / '.config'
@@ -57,6 +59,10 @@ def _quote_argument(argument):
 
 
 def _command():
+    if os.environ.get('SNAP'):
+        # snapd's session agent re-enters the snap and forwards Exec arguments.
+        # Do not forward our native shell wrapper or a revision-specific path.
+        return ['watercooler-manager']
     # GLib checks the executable before expanding %% escapes; the desktop
     # standard also disallows '=' in that token. A fixed shell wrapper keeps
     # unusual installation paths in arguments. Paths never enter shell code.
@@ -65,6 +71,11 @@ def _command():
         # Preserve a deliberate legacy-tray choice on older X11 desktops.
         script = 'PYSTRAY_BACKEND=gtk ' + script
     command = ['/bin/sh', '-c', script, 'watercooler-manager']
+    if os.environ.get('WATERCOOLER_LAUNCHER'):
+        launcher = Path(os.environ['WATERCOOLER_LAUNCHER'])
+        if not launcher.is_absolute():
+            raise ValueError('The packaged launcher must be an absolute path')
+        return command + [str(launcher)]
     # Keep the venv interpreter path: resolving its symlink would lose the
     # environment. Frozen executables must never point into _MEIPASS.
     command.append(str(Path(sys.executable).absolute()))
@@ -74,12 +85,16 @@ def _command():
 
 
 def set_enabled(enabled):
+    if os.environ.get('FLATPAK_ID'):
+        from .flatpak_autostart import set_enabled as portal_set_enabled
+        portal_set_enabled(enabled)
+        return
     path = entry_path()
     if enabled:
         command = ' '.join(_quote_argument(argument) for argument in _command())
         content = ('[Desktop Entry]\nType=Application\nVersion=1.0\n'
                    'Name=Watercooler Manager\n'
-                   'Comment=Bluetooth water cooler controls\n'
+                   'Comment=Utility to manage LCT21001 / LCT22002 laptop water coolers\n'
                    f'Exec={command}\nTerminal=false\n')
     else:
         # An override also disables a matching system-wide installation.

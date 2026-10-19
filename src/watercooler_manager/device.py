@@ -206,8 +206,11 @@ class WaterCoolingDevice:
         async with self._write_lock:
             if not await self.is_connected():
                 raise RuntimeError("Not connected")
-            await asyncio.wait_for(
-                self.client.write_gatt_char(NordicUART.CHAR_TX, data), timeout=5.0)
+            # Python 3.11's wait_for can swallow a caller cancellation when
+            # the write finishes in the same event-loop turn. In a fill cycle
+            # that delays cancellation and disconnect until the cycle ends.
+            async with asyncio.timeout(5.0):
+                await self.client.write_gatt_char(NordicUART.CHAR_TX, data)
 
     async def _command(self, command, enabled=0, p1=0, p2=0, p3=0, p4=0):
         await self.write_buffer(bytearray([0xFE, command, enabled, p1, p2, p3, p4, 0xEF]))

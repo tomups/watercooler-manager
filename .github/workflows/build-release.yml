@@ -9,68 +9,236 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: packages-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            platform: linux-x86_64
-            executable: WaterCoolerManager
-          - os: windows-latest
-            platform: windows-x86_64
-            executable: WaterCoolerManager.exe
-    runs-on: ${{ matrix.os }}
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
           version: '0.12.17'
-      - name: Install Linux runtime and create environment
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-venv python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1 xvfb xauth dbus-x11
-          uv venv --python /usr/bin/python3 --system-site-packages
-          uv sync --locked --group build --python /usr/bin/python3
       - uses: actions/setup-python@v5
-        if: runner.os == 'Windows'
         with:
           python-version: '3.14'
-      - name: Install Windows dependencies
-        if: runner.os == 'Windows'
-        run: uv sync --locked --group build --python python
-      - name: Build
-        shell: bash
+      - run: uv sync --locked --group build --python python
+      - name: Build and check Windows executable
         run: |
-          if [ "$RUNNER_OS" = Windows ]; then
-            .venv/Scripts/python scripts/build.py
-            dist/WaterCoolerManager.exe --help
-          else
-            .venv/bin/python scripts/build.py
-            dist/WaterCoolerManager --help
-            xvfb-run -a dbus-run-session -- .venv/bin/python tests/smoke_linux_tray.py --virtual-host --executable dist/WaterCoolerManager
-          fi
+          .venv/Scripts/python scripts/build.py
+          dist/WaterCoolerManager.exe --help
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}
-          path: dist/${{ matrix.executable }}
+          name: windows-x86_64
+          path: dist/WaterCoolerManager.exe
+          if-no-files-found: error
+
+  linux-payload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build with EL9's glibc 2.34 baseline
+        run: |
+          docker build -f packaging/linux/Dockerfile -t watercooler-build .
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" watercooler-build
+      - name: Test frozen startup, icons and tray menu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi python3-pil xvfb xauth dbus-x11
+          build/linux/WaterCoolerManager/WaterCoolerManager --help
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/linux/WaterCoolerManager/WaterCoolerManager --exit-via-menu
+          tar -C build/linux -czf build/linux-payload.tar.gz WaterCoolerManager snap-runtime
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-payload
+          path: build/linux-payload.tar.gz
+          if-no-files-found: error
+
+  packages:
+    needs: linux-payload
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-payload
+          path: build
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y snapd binutils desktop-file-utils appstream python3-gi python3-pil xvfb xauth dbus-x11
+          mkdir -p build/linux
+          tar -xf build/linux-payload.tar.gz -C build/linux
+      - name: Build DEB, RPM, Arch, portable archive, AppImage and Snap
+        run: |
+          python3 scripts/package_linux.py stage
+          python3 scripts/package_linux.py native
+          python3 scripts/package_linux.py appimage
+          python3 scripts/package_linux.py snap
+          desktop-file-validate packaging/linux/*.desktop
+          appstreamcli validate --no-net packaging/linux/*.metainfo.xml
+      - name: Test portable and AppImage launchers
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          build/packages/app/watercooler-manager --help
+          dist/packages/*.AppImage --help
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/packages/app/watercooler-manager --exit-via-menu
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable "$(find dist/packages -name '*.AppImage')" --exit-via-menu
+      - name: Test AppIndicator Snap path handling
+        run: |
+          export SNAP=/snap/watercooler-manager/current
+          export SNAP_USER_DATA="$PWD/build/fake-snap/revision"
+          export SNAP_USER_COMMON="$PWD/build/fake-snap/common"
+          export HOME="$SNAP_USER_DATA"
+          export XDG_CACHE_HOME="$HOME/.cache"
+          export XDG_CONFIG_HOME="$HOME/.config"
+          mkdir -p "$HOME"
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/packages/app/watercooler-manager --exit-via-menu
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages-x86_64
+          path: dist/packages/*
+          if-no-files-found: error
+
+  native-install:
+    needs: packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['debian:12', 'ubuntu:22.04', 'rockylinux:9', 'fedora:43', 'archlinux:base', 'opensuse/tumbleweed:latest']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-packages-x86_64
+          path: dist/packages
+      - name: Install package and exercise its native tray
+        run: docker run --rm -v "$PWD:/work" -w /work '${{ matrix.image }}' sh packaging/linux/check-installed.sh
+
+  flatpak:
+    needs: linux-payload
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-payload
+          path: build
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder binutils python3-gi python3-pil xvfb xauth dbus-x11
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          mkdir -p build/linux
+          tar -xf build/linux-payload.tar.gz -C build/linux
+      - name: Build and install Flatpak bundle
+        run: |
+          python3 scripts/package_linux.py stage
+          python3 scripts/package_linux.py flatpak
+          flatpak install --user --noninteractive dist/packages/*.flatpak
+          dbus-run-session -- flatpak run --user io.github.tomups.WatercoolerManager --help
+      - name: Test sandboxed tray and exported icon paths
+        run: |
+          printf '#!/bin/sh\nexec flatpak run --user io.github.tomups.WatercoolerManager "$@"\n' > build/run-flatpak
+          chmod +x build/run-flatpak
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/run-flatpak --exit-via-menu
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-x86_64
+          path: dist/packages/*.flatpak
+          if-no-files-found: error
+
+  snap-install:
+    needs: packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-packages-x86_64
+          path: dist/packages
+      - name: Install Snap and connect Bluetooth access
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y snapd dbus-user-session python3-gi python3-pil xvfb xauth dbus-x11
+          sudo snap install --dangerous dist/packages/*.snap
+          sudo snap connect watercooler-manager:bluez :bluez
+          snap run watercooler-manager --help
+      - name: Test confined desktop tray
+        run: |
+          # Snap needs a real systemd user bus for its cgroup tracking.
+          # The dedicated CI runner has no desktop tray services, so the
+          # virtual host can safely use this bus rather than a private one.
+          sudo loginctl enable-linger "$USER"
+          sudo systemctl start "user@$(id -u).service"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          systemctl --user start dbus.service
+          printf '#!/bin/sh\nexec snap run watercooler-manager "$@"\n' > build-run-snap
+          chmod +x build-run-snap
+          # Start inside the user manager's delegated cgroup, rather than the
+          # Actions agent's system service, so snap-confine can track the app.
+          systemd-run --user --wait --pipe --collect --service-type=exec \
+            --working-directory="$PWD" --setenv=XDG_RUNTIME_DIR --setenv=DBUS_SESSION_BUS_ADDRESS \
+            xvfb-run -a python3 tests/smoke_linux_tray.py --virtual-host --executable build-run-snap --exit-via-menu
+
+  nix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and check Nix package
+        run: |
+          nix flake check --no-build
+          nix build --print-build-logs --out-link build/nix-result
+          build/nix-result/bin/watercooler-manager --help
+          sudo apt-get update
+          sudo apt-get install -y python3-gi python3-pil xvfb xauth dbus-x11
+          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build/nix-result/bin/watercooler-manager --exit-via-menu
+      - name: Export package closure and locked source
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd
+          mkdir -p dist/packages
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          nix-store --export $(nix-store --query --requisites ./build/nix-result) | zstd -T0 -o "dist/packages/watercooler-manager-$version-x86_64.nar.zst"
+          readlink -f build/nix-result > "dist/packages/watercooler-manager-$version-nix-store-path.txt"
+          git archive --format=tar --prefix="watercooler-manager-$version/" HEAD | gzip > "dist/packages/watercooler-manager-$version-nix-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nix-x86_64
+          path: dist/packages/*
           if-no-files-found: error
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-latest
+    needs: [windows, packages, native-install, flatpak, snap-install, nix]
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          pattern: '*-x86_64'
+          path: release
+          merge-multiple: true
+      - name: Generate release checksums
+        working-directory: release
+        run: sha256sum * > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/linux-x86_64/WaterCoolerManager
-            artifacts/windows-x86_64/WaterCoolerManager.exe
+          files: release/*
           fail_on_unmatched_files: true

@@ -1,0 +1,40 @@
+{
+  "app-id": "io.github.tomups.WatercoolerManager",
+  "branch": "stable",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "49",
+  "sdk": "org.gnome.Sdk",
+  "command": "watercooler-manager",
+  "finish-args": [
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--system-talk-name=org.bluez",
+    "--talk-name=org.kde.StatusNotifierWatcher",
+    "--talk-name=org.freedesktop.Notifications"
+  ],
+  "modules": [
+    {
+      "name": "watercooler-manager",
+      "buildsystem": "simple",
+      "build-options": {"strip": false, "no-debuginfo": true},
+      "build-commands": [
+        "mkdir -p /app/lib/watercooler-manager /app/bin",
+        "cp -a app/. /app/lib/watercooler-manager/",
+        "ln -s /app/lib/watercooler-manager/watercooler-manager /app/bin/watercooler-manager",
+        "install -Dm644 io.github.tomups.WatercoolerManager.desktop /app/share/applications/io.github.tomups.WatercoolerManager.desktop",
+        "install -Dm644 io.github.tomups.WatercoolerManager.metainfo.xml /app/share/metainfo/io.github.tomups.WatercoolerManager.metainfo.xml",
+        "install -Dm644 connected.png /app/share/icons/hicolor/512x512/apps/io.github.tomups.WatercoolerManager.png",
+        "install -Dm644 LICENSE /app/share/licenses/watercooler-manager/LICENSE"
+      ],
+      "sources": [
+        {"type": "dir", "path": "../../build/packages/app", "dest": "app"},
+        {"type": "file", "path": "../linux/io.github.tomups.WatercoolerManager.desktop"},
+        {"type": "file", "path": "../linux/io.github.tomups.WatercoolerManager.metainfo.xml"},
+        {"type": "file", "path": "../../src/icons/connected.png"},
+        {"type": "file", "path": "../../LICENSE"}
+      ]
+    }
+  ]
+}
