@@ -3,6 +3,9 @@
 Control compatible laptop water coolers over Bluetooth from your Windows or Linux system tray. Adjust cooling, choose RGB effects, and save your preferred settings without opening a separate control window.
 
 ![Water Cooler Manager system tray menu](https://github.com/user-attachments/assets/d9b69dd2-7aa6-4dce-97bc-4bb408dd60b8)
+![Water Cooler Manager windows system tray menu](https://github.com/user-attachments/assets/606967b7-d3c1-4f1e-9d31-80ed5aebcd39
+)
+
 
 ## Compatibility
 
