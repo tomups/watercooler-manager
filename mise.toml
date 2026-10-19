@@ -1,0 +1,4 @@
+# mise owns the toolchain; uv owns dependencies and the project .venv.
+[tools]
+python = "3.14.7"
+uv = "0.12.17"

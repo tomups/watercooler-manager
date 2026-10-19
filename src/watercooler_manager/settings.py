@@ -3,15 +3,11 @@ import json
 import platform
 from typing import Tuple
 from .enums import PumpVoltage, RGBState
+from . import linux_autostart
+if platform.system() == "Windows":
+    import winshell
 from os.path import join, basename, splitext
 from sys import executable
-
-# Windows-specific imports
-if platform.system() == 'Windows':
-    try:
-        import winshell
-    except ImportError:
-        winshell = None
 
 class Settings:
     REGISTRY_KEY = r"Software\WaterCooler"
@@ -34,6 +30,10 @@ class Settings:
             self._load_from_registry()
         else:
             self._load_from_file()
+            if platform.system() == 'Linux':
+                # The desktop entry is authoritative, including changes made
+                # through the desktop's startup settings outside this app.
+                self.auto_start = linux_autostart.is_enabled()
 
     def save(self):
         if platform.system() == 'Windows':
@@ -71,6 +71,11 @@ class Settings:
             winreg.SetValueEx(key, "rgb_color", 0, winreg.REG_BINARY, bytes(self.rgb_color))
             winreg.SetValueEx(key, "auto_start", 0, winreg.REG_DWORD, int(self.auto_start))
             winreg.SetValueEx(key, "auto_connect", 0, winreg.REG_DWORD, int(self.auto_connect))
+            # Drop the retired experimental control without changing RGB preferences.
+            try:
+                winreg.DeleteValue(key, "fan_rgb")
+            except FileNotFoundError:
+                pass
             winreg.CloseKey(key)
         except:
             pass
@@ -107,15 +112,13 @@ class Settings:
             with open(self.CONFIG_FILE, 'w') as f:
                 json.dump(config, f)
         except:
-            pass 
+            pass
 
     def set_autostart(self, autostart: bool):
-        self.auto_start = autostart
-        
-        if platform.system() == 'Windows' and 'winshell' in globals() and winshell:
+        if platform.system() == 'Windows':
             startup_dir = winshell.startup()
             shortcut_path = join(startup_dir, f"{splitext(basename(executable))[0]}.lnk")
-            
+
             if autostart:
                 winshell.CreateShortcut(
                     Path=shortcut_path,
@@ -125,5 +128,10 @@ class Settings:
                 )
             elif os.path.exists(shortcut_path):
                 os.remove(shortcut_path)
-        
-        self.save() 
+        elif platform.system() == 'Linux':
+            linux_autostart.set_enabled(autostart)
+        else:
+            raise ValueError('Autostart is only supported on Windows and Linux')
+
+        self.auto_start = autostart
+        self.save()

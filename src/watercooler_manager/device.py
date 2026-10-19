@@ -1,99 +1,309 @@
+import asyncio
+import re
+import time
+from contextlib import suppress
 from typing import Optional, List
+
 from bleak import BleakScanner, BleakClient
 from .models import DeviceInfo, LCTDeviceModel
 from .enums import PumpVoltage, RGBState, Commands, NordicUART
 
+
 class WaterCoolingDevice:
-    def __init__(self):
+    FIRMWARE_TIMEOUT = 3.0
+    METER_TIMEOUT = 5.0
+    METER_INTERVAL = 15.0
+    FLOW_STARTUP_GRACE = 5.0
+
+    def __init__(self, on_status=None, on_disconnect=None):
         self.client: Optional[BleakClient] = None
         self.connected_model: Optional[str] = None
+        self.firmware_version = None
+        self.flow_status = "unknown"
+        self.pump_running = False
+        self.on_status = on_status or (lambda: None)
+        self.on_disconnect = on_disconnect or (lambda: None)
+        self._firmware_received = asyncio.Event()
+        self._meter_received = asyncio.Event()
+        self._monitor_task = None
+        self._write_lock = asyncio.Lock()
+        self._loop = None
+        self._closing = False
+        self._meter_state = None
+        self._flow_start_deadline = 0.0
+        self._flow_start_timer = None
+
+    def _cancel_flow_startup(self):
+        if self._flow_start_timer:
+            self._flow_start_timer.cancel()
+            self._flow_start_timer = None
+        self._flow_start_deadline = 0.0
+
+    def _update_flow(self):
+        if not self.pump_running:
+            self._set_flow("unknown")
+        elif self._meter_state == 2:
+            self._cancel_flow_startup()
+            self._set_flow("OK")
+        elif time.monotonic() < self._flow_start_deadline:
+            self._set_flow("starting")
+        else:
+            self._set_flow("unknown" if self._meter_state is None else "fault")
+
+    def _finish_flow_startup(self):
+        self._cancel_flow_startup()
+        self._update_flow()
+
+    def _set_flow(self, status):
+        if self.flow_status != status:
+            self.flow_status = status
+            self.on_status()
+
+    def _clear_status(self):
+        self._cancel_flow_startup()
+        self._meter_state = None
+        self.connected_model = None
+        self.firmware_version = None
+        self.pump_running = False
+        self.flow_status = "unknown"
+        self.on_status()
+
+    def _disconnected(self, client):
+        # Bleak callbacks may originate outside our asyncio thread.
+        if self._loop and not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._handle_disconnect, client)
+
+    def _handle_disconnect(self, client):
+        if client is not self.client:
+            return
+        if self._monitor_task:
+            self._monitor_task.cancel()
+        self._clear_status()
+        if not self._closing:
+            self.on_disconnect()
+
+    def _notification(self, sender, data):
+        if not data:
+            return
+        if data[0] == 0xFE:
+            # Hardware uses compact 5-byte frames; the documented padded form is 8.
+            if (len(data) not in (5, 8) or data[-1] != 0xEF or
+                    data[1] not in (Commands.METER_PUSH, Commands.QUERY_METER)):
+                return
+            self._meter_received.set()
+            self._meter_state = data[3]
+            self._update_flow()
+            return
+        # Do not mistake unknown binary telemetry for a firmware version.
+        try:
+            version = bytes(data).decode("utf-8").strip("\x00\r\n ")
+        except UnicodeDecodeError:
+            return
+        # The gist's example prefix differs from the actual LCT22002 response.
+        if not re.fullmatch(r"(?:CoolingSystem FW V|MCU F/W Version: )\d+(?:\.\d+)+", version):
+            return
+        self.firmware_version = version
+        self._firmware_received.set()
+        self.on_status()
 
     async def connect(self, device_uuid: str):
+        if await self.is_connected():
+            return
+        self._loop = asyncio.get_running_loop()
+        self._closing = False
+        self._clear_status()
+        self._firmware_received.clear()
+        self._meter_received.clear()
         device = await BleakScanner.find_device_by_address(device_uuid)
         if not device:
-            raise Exception("Device not found")
+            raise RuntimeError("Device not found")
+        self.client = BleakClient(device, disconnected_callback=self._disconnected)
+        client = self.client
+
+        def receive(sender, data):
+            # Ignore notifications queued by a previous connection.
+            if client is self.client and client.is_connected:
+                self._notification(sender, data)
 
         try:
-            self.client = BleakClient(device_uuid)
-            await self.client.connect(timeout=5.0)
+            # Bleak 3 takes no connection options here; bound the whole operation.
+            await asyncio.wait_for(self.client.connect(), timeout=5.0)
             self.connected_model = await self.device_model_from_name(device.name or "")
-        except Exception as e:
-            if self.client:
-                await self.client.disconnect()
-            raise Exception(f"Failed to connect: {str(e)}")
-
-    async def disconnect(self):
-        if self.client and self.client.is_connected:
+            await self.client.start_notify(NordicUART.CHAR_RX, receive)
+            await self.write_buffer(b"sw")
             try:
-                await self.write_reset()
-            except:
+                await asyncio.wait_for(self._firmware_received.wait(), self.FIRMWARE_TIMEOUT)
+            except asyncio.TimeoutError:
+                # Older firmware may still accept control commands without this reply.
                 pass
-            await self.client.disconnect()
+            if not await self.is_connected():
+                raise RuntimeError("Device disconnected during handshake")
+            self.on_status()
+        except BaseException:
+            await self.disconnect(sleep=False)
+            raise
+
+    def start_monitoring(self):
+        if not self._monitor_task or self._monitor_task.done():
+            self._monitor_task = asyncio.create_task(self._monitor_flow())
+
+    async def _monitor_flow(self):
+        while await self.is_connected():
+            self._meter_received.clear()
+            try:
+                await self.query_meter()
+                await asyncio.wait_for(self._meter_received.wait(), self.METER_TIMEOUT)
+            except Exception:
+                self._meter_state = None
+                self._set_flow("unknown")
+            await asyncio.sleep(self.METER_INTERVAL)
+
+    async def disconnect(self, sleep=None):
+        if sleep is None:
+            # Plain BLE disconnect stops all outputs on the tested Mk2 firmware.
+            # Preserve sleep-before-disconnect for unverified models/versions.
+            sleep = not (self.connected_model == LCTDeviceModel.LCT22002 and
+                         self.firmware_version in ("MCU F/W Version: 2.0.0.4",
+                                                   "CoolingSystem FW V2.0.0.4"))
+        self._closing = True
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._monitor_task
+            self._monitor_task = None
+        client = self.client
+        try:
+            if client and client.is_connected:
+                if sleep:
+                    with suppress(Exception):
+                        await self.write_sleep()
+                await client.disconnect()
+        finally:
             self.client = None
-            self.connected_model = None
+            self._clear_status()
 
     async def device_model_from_name(self, name: str) -> Optional[str]:
-        for model in [LCTDeviceModel.LCT21001, LCTDeviceModel.LCT22002]:
+        for model in (LCTDeviceModel.LCT21001, LCTDeviceModel.LCT22002):
             if model.lower() in name.lower():
                 return model
         return None
 
     async def get_device_list(self) -> List[DeviceInfo]:
         devices = await BleakScanner.discover(return_adv=True)
-        device_info_list = []
-
-        for addr, (device, adv) in devices.items():            
-            if not device.name:
-                continue
-
-            model = await self.device_model_from_name(device.name)
-            if model:                
+        result = []
+        for device, adv in devices.values():
+            name = device.name or adv.local_name or ""
+            if await self.device_model_from_name(name):
                 info = DeviceInfo()
-                info.uuid = device.address
-                info.name = device.name
-                info.rssi = adv.rssi or 0
-                device_info_list.append(info)
-
-        return device_info_list
+                info.uuid, info.name, info.rssi = device.address, name, adv.rssi or 0
+                result.append(info)
+        return result
 
     async def is_connected(self) -> bool:
         return self.client is not None and self.client.is_connected
 
-    async def write_buffer(self, data: bytearray):
-        if not await self.is_connected():
-            raise Exception("Not connected")
-        await self.client.write_gatt_char(NordicUART.CHAR_TX, data)
+    async def write_buffer(self, data):
+        async with self._write_lock:
+            if not await self.is_connected():
+                raise RuntimeError("Not connected")
+            await asyncio.wait_for(
+                self.client.write_gatt_char(NordicUART.CHAR_TX, data), timeout=5.0)
+
+    async def _command(self, command, enabled=0, p1=0, p2=0, p3=0, p4=0):
+        await self.write_buffer(bytearray([0xFE, command, enabled, p1, p2, p3, p4, 0xEF]))
+
+    async def _disable_mk2_rgb_effect(self):
+        # Mk2 effects override the base lighting. Disable them before changing
+        # the base color/off state, then re-enable the requested animation.
+        if self.connected_model == LCTDeviceModel.LCT22002:
+            await self._command(Commands.MK2_RGB_EFFECT)
+
+    def supports_rgb_state(self, state: RGBState):
+        return not state.mk2_only or self.connected_model == LCTDeviceModel.LCT22002
 
     async def write_rgb(self, red: int, green: int, blue: int, state: RGBState):
-        if not all(0 <= x <= 0xff for x in (red, green, blue)) or not 0 <= state <= 0x03:
+        state = RGBState(state)
+        if not all(0 <= x <= 255 for x in (red, green, blue)):
             raise ValueError("Parameters out of range")
-        data = bytearray([0xfe, Commands.RGB, 0x01, red, green, blue, state, 0xef])
-        await self.write_buffer(data)
+        if not self.supports_rgb_state(state):
+            raise ValueError("This lighting effect requires an Mk2 cooler")
+        await self._disable_mk2_rgb_effect()
+        # Selectors 4–6 were verified only on the Mk2 effect command.
+        base_state = RGBState.STATIC if state.mk2_only else state
+        await self._command(Commands.RGB, 1, red, green, blue, base_state)
+        if self.connected_model == LCTDeviceModel.LCT22002 and state != RGBState.STATIC:
+            await self._command(Commands.MK2_RGB_EFFECT, 1, red, green, blue, state)
 
     async def write_rgb_off(self):
-        data = bytearray([0xfe, Commands.RGB, 0x00, 0x00, 0x00, 0x00, 0x00, 0xef])
-        await self.write_buffer(data)
+        await self._disable_mk2_rgb_effect()
+        await self._command(Commands.RGB)
 
     async def write_fan_mode(self, duty_cycle_percent: int):
-        if not 0 <= duty_cycle_percent <= 0xff:
-            raise ValueError("Duty cycle out of range")
-        data = bytearray([0xfe, Commands.FAN, 0x01, duty_cycle_percent, 0x00, 0x00, 0x00, 0xef])
-        await self.write_buffer(data)
+        if not 0 <= duty_cycle_percent <= 100:
+            raise ValueError("Duty cycle must be between 0 and 100")
+        await self._command(Commands.FAN, 1, duty_cycle_percent)
 
     async def write_fan_off(self):
-        data = bytearray([0xfe, Commands.FAN, 0x00, 0x00, 0x00, 0x00, 0x00, 0xef])
-        await self.write_buffer(data)
+        await self._command(Commands.FAN)
 
-    async def write_pump_mode(self, pump_duty_cycle_percent: int = 60, pump_voltage: PumpVoltage = PumpVoltage.V7):
-        if not 0 <= pump_duty_cycle_percent <= 100 or not 0 <= pump_voltage <= 0x03:
+    async def write_pump_mode(self, pump_duty_cycle_percent: int = 60,
+                              pump_voltage: PumpVoltage = PumpVoltage.V7):
+        if not 0 <= pump_duty_cycle_percent <= 100 or not 0 <= pump_voltage <= 3:
             raise ValueError("Parameters out of range")
-        data = bytearray([0xfe, Commands.PUMP, 0x01, pump_duty_cycle_percent, pump_voltage, 0x00, 0x00, 0xef])
-        await self.write_buffer(data)
+        await self._command(Commands.PUMP, 1, pump_duty_cycle_percent, pump_voltage)
+        was_running = self.pump_running
+        self.pump_running = pump_duty_cycle_percent > 0
+        if self.pump_running and not was_running:
+            self._cancel_flow_startup()
+            self._meter_state = None
+            self._flow_start_deadline = time.monotonic() + self.FLOW_STARTUP_GRACE
+            self._flow_start_timer = asyncio.get_running_loop().call_later(
+                self.FLOW_STARTUP_GRACE, self._finish_flow_startup)
+            self._set_flow("starting")
+        elif not self.pump_running:
+            self._cancel_flow_startup()
+            self._set_flow("unknown")
 
     async def write_pump_off(self):
-        data = bytearray([0xfe, Commands.PUMP, 0x00, 0x00, 0x00, 0x00, 0x00, 0xef])
-        await self.write_buffer(data)
+        await self._command(Commands.PUMP)
+        self.pump_running = False
+        self._cancel_flow_startup()
+        self._set_flow("unknown")
 
-    async def write_reset(self):
-        data = bytearray([0xfe, Commands.RESET, 0x00, 0x01, 0x00, 0x00, 0x00, 0xef])
-        await self.write_buffer(data) 
+    async def write_sleep(self):
+        await self._command(Commands.SYSTEM_MODE, 0, 1)
+        self.pump_running = False
+        self._cancel_flow_startup()
+        self._set_flow("unknown")
+
+    async def write_line_off(self):
+        """OEM line-off command; intentionally not the default disconnect policy."""
+        await self._command(Commands.LINE_OFF)
+
+    async def query_meter(self):
+        await self._command(Commands.QUERY_METER)
+
+    async def write_priming(self, enabled):
+        await self._command(Commands.SYSTEM_MODE, int(enabled), 4, 0x50 if enabled else 0)
+
+    async def prime(self, restore, on_progress=None):
+        """Run the OEM fill cycle; cancellation still stops priming and restores settings."""
+        try:
+            await self.write_priming(True)
+            await self.write_fan_mode(50)
+            for cycle in range(8):
+                if on_progress:
+                    on_progress(cycle + 1)
+                await self.write_pump_off()
+                await asyncio.sleep(0.5)
+                await self.write_pump_mode(100, PumpVoltage.V8)
+                await asyncio.sleep(5.5)
+                await self.write_pump_off()
+                await asyncio.sleep(2.5)
+        finally:
+            if await self.is_connected():
+                # Restoration must also be attempted when the stop command fails.
+                try:
+                    await self.write_priming(False)
+                finally:
+                    await restore()

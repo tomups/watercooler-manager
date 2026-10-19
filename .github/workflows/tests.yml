@@ -1,0 +1,52 @@
+name: Tests
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.14']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked --python python
+      - name: Unit tests (native Windows backend)
+        if: runner.os == 'Windows'
+        run: .venv/Scripts/python -m unittest discover -s tests -v
+      - name: Unit tests (headless)
+        if: runner.os == 'Linux'
+        env:
+          PYSTRAY_BACKEND: dummy
+        run: .venv/bin/python -m unittest discover -s tests -v
+
+  native-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.17'
+      - name: Install native tray dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1 xvfb xauth dbus-x11 desktop-file-utils
+          uv venv --python /usr/bin/python3 --system-site-packages
+          uv sync --locked --python /usr/bin/python3
+      - name: Native tray integration
+        run: xvfb-run -a dbus-run-session -- .venv/bin/python tests/smoke_linux_tray.py --virtual-host
+      - name: XDG autostart integration
+        env:
+          PYSTRAY_BACKEND: dummy
+        run: .venv/bin/python tests/smoke_linux_autostart.py

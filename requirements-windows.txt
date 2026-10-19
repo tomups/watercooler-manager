@@ -1,3 +1,0 @@
-bleak-winrt==1.2.0
-winshell==0.6
-pywin32==310
