@@ -23,7 +23,7 @@ All formats need a working graphical desktop and StatusNotifier/AppIndicator tra
 
 ## Compatibility and startup
 
-The shared binary payload is built on Rocky Linux 9 with Python 3.11 and glibc 2.34. Python, Pillow, Bleak, GTK/AppIndicator bindings and GTK runtime libraries are included. The glibc minimum is declared in native packages. This improves the old Ubuntu 24.04/glibc 2.39 baseline, but is not a promise that every distribution or graphics configuration works. RHEL 8, Ubuntu 20.04, musl distributions and other CPU architectures need a source or Nix build rather than these frozen binaries. Native installation/tray CI covers Debian 12, Ubuntu 22.04, Rocky 9, Fedora 43, Arch and openSUSE Tumbleweed. Flatpak and Snap have separate sandboxed tray checks.
+The shared binary payload is built on Rocky Linux 9 with Python 3.11 and glibc 2.34. Python, Pillow, Bleak, GTK/AppIndicator bindings and GTK runtime libraries are included. The host supplies glibc and libgcc; native packages declare both dependencies, and staging checks every bundled ELF file against the glibc 2.34 symbol baseline. This improves the old Ubuntu 24.04/glibc 2.39 baseline, but is not a promise that every distribution or graphics configuration works. RHEL 8, Ubuntu 20.04, musl distributions and other CPU architectures need a source or Nix build rather than these frozen binaries. Native installation/tray CI covers Debian 12, Ubuntu 22.04, Rocky 9, Fedora 43, Arch and openSUSE Tumbleweed. Flatpak and Snap have separate sandboxed tray checks.
 
 Choose **Settings → Start on boot** to start at desktop login:
 
@@ -47,7 +47,7 @@ python3 scripts/package_linux.py appimage
 python3 scripts/package_linux.py snap
 ```
 
-The host helpers need Python 3.11+, `snap` (for `snap pack`), and standard Linux tools. nFPM, appimagetool and the AppImage runtime download into `build/packaging-tools` from versioned URLs, verified against committed SHA256 hashes. Snap packaging uses `snap pack` directly on the frozen payload and does not need a running snap daemon, Snapcraft, or a nested VM.
+The host helpers need Python 3.11+, `readelf` (binutils), `snap` (for `snap pack`), and standard Linux tools. nFPM, appimagetool and the AppImage runtime download into `build/packaging-tools` from versioned URLs, verified against committed SHA256 hashes. Snap packaging uses `snap pack` directly on the frozen payload and does not need a running snap daemon, Snapcraft, or a nested VM.
 
 An optional tools container avoids installing packaging commands on the host:
 

@@ -71,7 +71,7 @@ jobs:
       - name: Install packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y snapd desktop-file-utils appstream python3-gi python3-pil xvfb xauth dbus-x11
+          sudo apt-get install -y snapd binutils desktop-file-utils appstream python3-gi python3-pil xvfb xauth dbus-x11
           mkdir -p build/linux
           tar -xf build/linux-payload.tar.gz -C build/linux
       - name: Build DEB, RPM, Arch, portable archive, AppImage and Snap
@@ -126,7 +126,7 @@ jobs:
       - name: Install Flatpak tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder python3-gi python3-pil xvfb xauth dbus-x11
+          sudo apt-get install -y flatpak flatpak-builder binutils python3-gi python3-pil xvfb xauth dbus-x11
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           mkdir -p build/linux
           tar -xf build/linux-payload.tar.gz -C build/linux
@@ -160,15 +160,23 @@ jobs:
       - name: Install Snap and connect Bluetooth access
         run: |
           sudo apt-get update
-          sudo apt-get install -y snapd python3-gi python3-pil xvfb xauth dbus-x11
+          sudo apt-get install -y snapd dbus-user-session python3-gi python3-pil xvfb xauth dbus-x11
           sudo snap install --dangerous dist/packages/*.snap
           sudo snap connect watercooler-manager:bluez :bluez
           snap run watercooler-manager --help
       - name: Test confined desktop tray
         run: |
+          # Snap needs a real systemd user bus for its cgroup tracking.
+          # The dedicated CI runner has no desktop tray services, so the
+          # virtual host can safely use this bus rather than a private one.
+          sudo loginctl enable-linger "$USER"
+          sudo systemctl start "user@$(id -u).service"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          systemctl --user start dbus.service
           printf '#!/bin/sh\nexec snap run watercooler-manager "$@"\n' > build-run-snap
           chmod +x build-run-snap
-          xvfb-run -a dbus-run-session -- python3 tests/smoke_linux_tray.py --virtual-host --executable build-run-snap --exit-via-menu
+          xvfb-run -a python3 tests/smoke_linux_tray.py --virtual-host --executable build-run-snap --exit-via-menu
 
   nix:
     runs-on: ubuntu-24.04

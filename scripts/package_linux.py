@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -78,6 +79,22 @@ def stage(payload):
         raise ValueError('Build an --onedir payload first (see packaging/linux/Dockerfile)')
     app = reset(BUILD / 'app')
     shutil.copytree(payload, app, dirs_exist_ok=True, symlinks=True)
+    # EL9.8 backports GLIBC_2.35 symbols into its glibc 2.34 packages.
+    # Its newer libgcc therefore cannot run against an older EL9 libc.
+    # Use the host compiler runtime, as AppImage also recommends, rather
+    # than overriding it with the build machine's libgcc.
+    (app / '_internal/libgcc_s.so.1').unlink(missing_ok=True)
+    for path in app.rglob('*'):
+        if not path.is_file() or path.is_symlink():
+            continue
+        with path.open('rb') as stream:
+            if stream.read(4) != b'\x7fELF':
+                continue
+        report = subprocess.check_output(['readelf', '--version-info', str(path)], text=True)
+        versions = [tuple(map(int, value.split('.'))) for value in
+                    re.findall(r'Name: GLIBC_(\d+\.\d+)', report)]
+        if versions and max(versions) > (2, 34):
+            raise RuntimeError(f'{path.name} exceeds the glibc 2.34 package baseline')
     copy(COMMON / 'launcher', app / 'watercooler-manager')
     (app / 'watercooler-manager').chmod(0o755)
     (app / 'WaterCoolerManager').chmod(0o755)
@@ -105,9 +122,9 @@ def native():
              'dst': '/usr/bin/watercooler-manager', 'type': 'symlink'},
         ],
         'overrides': {
-            'deb': {'depends': ['bluez', 'libc6 (>= 2.34)']},
-            'rpm': {'depends': ['bluez', 'glibc >= 2.34']},
-            'archlinux': {'depends': ['bluez', 'glibc']},
+            'deb': {'depends': ['bluez', 'libc6 (>= 2.34)', 'libgcc-s1']},
+            'rpm': {'depends': ['bluez', 'glibc >= 2.34', 'libgcc']},
+            'archlinux': {'depends': ['bluez', 'glibc', 'gcc-libs']},
         },
     }
     config_path = BUILD / 'nfpm.json'
@@ -127,7 +144,7 @@ pkgdesc='System tray controls for Bluetooth laptop water coolers'
 arch=('x86_64')
 url='https://github.com/tomups/watercooler-manager'
 license=('GPL-3.0-only')
-depends=('bluez' 'glibc')
+depends=('bluez' 'glibc' 'gcc-libs')
 provides=('watercooler-manager')
 conflicts=('watercooler-manager')
 options=('!strip')

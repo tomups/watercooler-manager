@@ -20,7 +20,7 @@ case "$ID" in
         pacman -U --noconfirm ./dist/packages/*.pkg.tar.zst
         ;;
     opensuse-tumbleweed)
-        zypper --non-interactive install --allow-unsigned-rpm python3-gobject python3-Pillow xorg-x11-server-Xvfb dbus-1 ./dist/packages/*.rpm
+        zypper --non-interactive install --allow-unsigned-rpm python3-gobject python3-Pillow xorg-x11-server-Xvfb dbus-1-tools ./dist/packages/*.rpm
         ;;
     *) exit 1 ;;
 esac
