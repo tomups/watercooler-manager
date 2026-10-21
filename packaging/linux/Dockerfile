@@ -10,6 +10,12 @@ RUN dnf install -y epel-release dnf-plugins-core \
        libappindicator-gtk3 libayatana-appindicator-gtk3 xorg-x11-server-Xvfb xorg-x11-xauth \
        dbus-daemon git binutils \
     && dnf clean all
+# EL9's old ATK bridge queries GetDeviceEventListeners, removed by modern
+# desktops. Build a compatible upstream release without disabling accessibility.
+RUN dnf install -y meson ninja-build dbus-devel libxml2-devel libXi-devel libXtst-devel xz \
+    && dnf clean all
+COPY packaging/linux/build-atspi.sh /tmp/build-atspi.sh
+RUN sh /tmp/build-atspi.sh && rm /tmp/build-atspi.sh
 WORKDIR /work
 ENV UV_PROJECT_ENVIRONMENT=/opt/build-venv UV_PYTHON_DOWNLOADS=never NO_AT_BRIDGE=1
 COPY pyproject.toml uv.lock ./
