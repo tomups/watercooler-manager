@@ -1,6 +1,6 @@
 [project]
 name = "watercooler-manager"
-version = "2.0.0"
+version = "2.0.1"
 description = "Utility to manage LCT21001 / LCT22002 laptop water coolers"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
