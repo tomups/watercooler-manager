@@ -7,7 +7,7 @@ RUN dnf install -y epel-release dnf-plugins-core \
     && dnf config-manager --set-enabled crb \
     && dnf install -y python3.11 python3.11-devel python3.11-pip gcc \
        gobject-introspection-devel cairo-devel cairo-gobject-devel pkgconf-pkg-config gtk3 \
-       libayatana-appindicator-gtk3 xorg-x11-server-Xvfb xorg-x11-xauth \
+       libappindicator-gtk3 libayatana-appindicator-gtk3 xorg-x11-server-Xvfb xorg-x11-xauth \
        dbus-daemon git binutils \
     && dnf clean all
 WORKDIR /work
