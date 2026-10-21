@@ -16,7 +16,9 @@ case "$ID" in
         dnf install -y python3-gobject python3-pillow xorg-x11-server-Xvfb dbus-daemon ./dist/packages/*.rpm
         ;;
     arch)
-        pacman -Syu --noconfirm python-gobject python-pillow xorg-server-xvfb dbus bluez
+        # Desktop apps commonly install legacy AppIndicator. Its host typelib
+        # must not pull newer libraries into the package's bundled GTK/GLib.
+        pacman -Syu --noconfirm python-gobject python-pillow xorg-server-xvfb dbus bluez libappindicator
         pacman -U --noconfirm ./dist/packages/*.pkg.tar.zst
         ;;
     opensuse-tumbleweed)

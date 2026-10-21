@@ -86,6 +86,15 @@ def desktop_files(prefix):
 def stage(payload):
     if not (payload / 'WaterCoolerManager').is_file() or not (payload / '_internal').is_dir():
         raise ValueError('Build an --onedir payload first (see packaging/linux/Dockerfile)')
+    # pystray prefers legacy AppIndicator over Ayatana, including a host's
+    # typelib if it is absent here. Bundle both with the matching EL9 GLib
+    # so a newer desktop library cannot leak into the frozen runtime.
+    for name in ('libappindicator3.so.1', 'libayatana-appindicator3.so.1',
+                 'gi_typelibs/AppIndicator3-0.1.typelib',
+                 'gi_typelibs/AyatanaAppIndicator3-0.1.typelib'):
+        if not (payload / '_internal' / name).is_file():
+            raise ValueError(f'Missing bundled AppIndicator runtime: {name}; '
+                             'rebuild with packaging/linux/Dockerfile')
     app = reset(BUILD / 'app')
     shutil.copytree(payload, app, dirs_exist_ok=True, symlinks=True)
     copy(payload.parent / 'snap-runtime/libxcb.so.1', BUILD / 'snap-runtime/libxcb.so.1')

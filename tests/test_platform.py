@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from PIL import Image
+import main as entrypoint
 from watercooler_manager import WaterCoolerManager
 from watercooler_manager.settings import Settings
 from watercooler_manager import tray
@@ -33,6 +34,38 @@ class StartupTests(unittest.TestCase):
         self.assertNotIn('Traceback', result.stderr)
         if sys.platform == 'linux':
             self.assertIn('README.md', result.stderr)
+
+
+class FrozenHelperTests(unittest.TestCase):
+    def run_main(self, environment, platform='linux', frozen=True):
+        inherited = []
+        with patch.dict(os.environ, environment, clear=True), \
+                patch.object(sys, 'platform', platform), \
+                patch.object(sys, 'frozen', frozen, create=True), \
+                patch.object(sys, 'argv', ['watercooler-manager']), \
+                patch('watercooler_manager.WaterCoolerManager') as manager:
+            manager.return_value.run.side_effect = lambda: inherited.append(dict(os.environ))
+            entrypoint.main()
+        return inherited[0]
+
+    def test_frozen_startup_restores_host_library_path_before_running_app(self):
+        environment = {'LD_LIBRARY_PATH': '/bundle:/host',
+                       'LD_LIBRARY_PATH_ORIG': '/host', 'DISPLAY': ':0'}
+        inherited = self.run_main(environment)
+        self.assertEqual(inherited['LD_LIBRARY_PATH'], '/host')
+        self.assertEqual(inherited['DISPLAY'], ':0')
+
+    def test_frozen_startup_removes_library_override_without_original(self):
+        for original in ({}, {'LD_LIBRARY_PATH_ORIG': ''}):
+            with self.subTest(original=original):
+                inherited = self.run_main({'LD_LIBRARY_PATH': '/bundle', **original})
+                self.assertNotIn('LD_LIBRARY_PATH', inherited)
+
+    def test_source_and_windows_startup_preserve_library_environment(self):
+        environment = {'LD_LIBRARY_PATH': '/bundle:/host', 'LD_LIBRARY_PATH_ORIG': '/host'}
+        for platform, frozen in (('linux', False), ('win32', True)):
+            with self.subTest(platform=platform, frozen=frozen):
+                self.assertEqual(self.run_main(environment, platform, frozen), environment)
 
 
 class TrayPlatformTests(unittest.TestCase):

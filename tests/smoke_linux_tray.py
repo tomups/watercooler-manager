@@ -96,12 +96,17 @@ class VirtualHost:
         self.thread.start()
 
 
-def run_parent(executable=None, virtual_host=False, exit_via_menu=False):
+def run_parent(executable=None, virtual_host=False, exit_via_menu=False, check_accessibility=False):
     from gi.repository import Gio, GLib
     from PIL import Image
 
     connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     host = VirtualHost(connection) if virtual_host else None
+    accessibility = None
+    if check_accessibility:
+        assert virtual_host, '--check-accessibility requires --virtual-host'
+        from smoke_linux_accessibility import AccessibilityHost
+        accessibility = AccessibilityHost(connection)
 
     def call(service, path, interface, method, parameters=None):
         return connection.call_sync(service, path, interface, method, parameters,
@@ -128,10 +133,17 @@ def run_parent(executable=None, virtual_host=False, exit_via_menu=False):
 
     before = set(registered())
     command = [str(Path(executable).resolve())] if executable else [sys.executable, __file__, "--child"]
+    # A private D-Bus session using the real display must not replace the
+    # desktop's AT-SPI socket. Accessibility tests use their own private bus.
+    environment = dict(os.environ, NO_AT_BRIDGE='1')
+    if virtual_host:
+        # A user's saved auto-connect setting must not reach real Bluetooth.
+        environment['DBUS_SYSTEM_BUS_ADDRESS'] = os.environ['DBUS_SESSION_BUS_ADDRESS']
+    if accessibility:
+        environment.pop('NO_AT_BRIDGE')
+        environment['AT_SPI_BUS_ADDRESS'] = os.environ['DBUS_SESSION_BUS_ADDRESS']
     child = subprocess.Popen(command, cwd=ROOT,
-                             # A private D-Bus session using the real display
-                             # must not replace the desktop's AT-SPI socket.
-                             env=dict(os.environ, NO_AT_BRIDGE='1'),
+                             env=environment,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     icon_paths = []
     succeeded = False
@@ -195,7 +207,9 @@ def run_parent(executable=None, virtual_host=False, exit_via_menu=False):
                 click('Exit')
             else:
                 child.terminate()
-            child.communicate(timeout=10)
+            stdout, stderr = child.communicate(timeout=10)
+            if accessibility:
+                accessibility.check(stderr)
             if exit_via_menu:
                 assert child.returncode == 0, child.returncode
                 assert not any(Path(filename).exists() for filename in icon_paths), 'Icon leaked after exit'
@@ -223,6 +237,8 @@ def run_parent(executable=None, virtual_host=False, exit_via_menu=False):
         click("Exit")
         stdout, stderr = child.communicate(timeout=10)
         assert child.returncode == 0, (child.returncode, stdout, stderr)
+        if accessibility:
+            accessibility.check(stderr)
         assert not any(Path(filename).exists() for filename in icon_paths), "Icon leaked after exit"
         print("PASS: native tray registration, full menu, Connect/Disconnect dispatch, "
               "64px icons, updates, Exit, and temporary-file cleanup")
@@ -252,5 +268,7 @@ if __name__ == "__main__":
         parser.add_argument('--executable', help='Check frozen startup without clicking controls or saving settings')
         parser.add_argument('--exit-via-menu', action='store_true',
                             help='Graceful Exit in a disposable package-test environment (may save settings)')
+        parser.add_argument('--check-accessibility', action='store_true',
+                            help='Check the enabled AT-SPI bridge against a private modern registry')
         args = parser.parse_args()
-        run_parent(args.executable, args.virtual_host, args.exit_via_menu)
+        run_parent(args.executable, args.virtual_host, args.exit_via_menu, args.check_accessibility)

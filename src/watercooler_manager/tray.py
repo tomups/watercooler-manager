@@ -1,5 +1,5 @@
 
-APP_VERSION = "v2.0.0"
+APP_VERSION = "v2.0.1"
 
 import logging
 import os
