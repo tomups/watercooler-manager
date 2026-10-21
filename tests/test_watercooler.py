@@ -293,8 +293,10 @@ class DeviceTests(unittest.IsolatedAsyncioTestCase):
         self.device.METER_TIMEOUT = 0.001
         self.device.METER_INTERVAL = 0.001
         self.device.flow_status = 'OK'
+        status_changed = asyncio.Event()
+        self.device.on_status = status_changed.set
         self.device.start_monitoring()
-        await asyncio.sleep(0.02)
+        await asyncio.wait_for(status_changed.wait(), timeout=1)
         self.assertEqual(self.device.flow_status, 'unknown')
         task = self.device._monitor_task
         await self.device.disconnect()
